@@ -13,18 +13,24 @@ android {
         applicationId = "com.shadowlook.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
-        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64") }
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64", "x86")
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        debug {
+            isMinifyEnabled = false
+            isDebuggable = true
         }
     }
     compileOptions {
@@ -33,7 +39,15 @@ android {
     }
     kotlinOptions { jvmTarget = "1.8" }
     buildFeatures { viewBinding = true }
-    packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/DEPENDENCIES"
+        }
+    }
 }
 
 dependencies {
@@ -45,7 +59,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
 
-    // CameraX
+    // CameraX - Stable versions
     val camerax_version = "1.3.1"
     implementation("androidx.camera:camera-core:${camerax_version}")
     implementation("androidx.camera:camera-camera2:${camerax_version}")
@@ -61,7 +75,7 @@ dependencies {
     implementation("androidx.room:room-ktx:${room_version}")
     ksp("androidx.room:room-compiler:${room_version}")
 
-    // TensorFlow Lite
+    // TensorFlow Lite - Include all ABIs
     implementation("org.tensorflow:tensorflow-lite:2.14.0")
     implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
@@ -69,13 +83,13 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
-    // Gson for embedding serialization
+    // Gson
     implementation("com.google.code.gson:gson:2.10.1")
 
     // ViewPager2 & RecyclerView
     implementation("androidx.viewpager2:viewpager2:1.0.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
 
-    // Coil for image loading
+    // Coil
     implementation("io.coil-kt:coil:2.5.0")
 }

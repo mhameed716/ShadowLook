@@ -5,7 +5,9 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -35,105 +37,151 @@ class RegisterFaceActivity : AppCompatActivity() {
     private lateinit var etAddress: com.google.android.material.textfield.TextInputEditText
 
     private lateinit var cameraExecutor: ExecutorService
-    private lateinit var tfliteHelper: TFLiteHelper
+    private var tfliteHelper: TFLiteHelper? = null
     private var imageCapture: ImageCapture? = null
     private var cameraProvider: ProcessCameraProvider? = null
-    private var latestFaceBitmap: Bitmap? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    // ML Kit detector for registration preview
     private val detector by lazy {
-        val options = FaceDetectorOptions.Builder()
-            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-            .build()
-        FaceDetection.getClient(options)
+        try {
+            val options = FaceDetectorOptions.Builder()
+                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+                .build()
+            FaceDetection.getClient(options)
+        } catch (e: Throwable) {
+            Log.e("RegisterFace", "فشل إنشاء ML Kit detector: ${e.message}", e)
+            // Fallback detector
+            val options = FaceDetectorOptions.Builder()
+                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+                .build()
+            FaceDetection.getClient(options)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_register_face)
-
-        previewView = findViewById(R.id.previewViewRegister)
-        overlayView = findViewById(R.id.overlayViewRegister)
-        etName = findViewById(R.id.etFullName)
-        etPhone = findViewById(R.id.etPhone)
-        etJob = findViewById(R.id.etJobTitle)
-        etAddress = findViewById(R.id.etAddress)
-
-        tfliteHelper = TFLiteHelper(this)
-        cameraExecutor = Executors.newSingleThreadExecutor()
-
-        if (allPermissionsGranted()) {
-            startCamera()
-        } else {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 1002)
-        }
-
-        findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCaptureEnroll).setOnClickListener {
-            captureAndEnroll()
-        }
-    }
-
-    private fun startCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            cameraProvider = cameraProviderFuture.get()
-            bindUseCases()
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun bindUseCases() {
-        val cameraProvider = cameraProvider ?: return
-
-        val preview = Preview.Builder().build().also {
-            it.setSurfaceProvider(previewView.surfaceProvider)
-        }
-
-        imageCapture = ImageCapture.Builder()
-            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-            .build()
-
-        val imageAnalysis = ImageAnalysis.Builder()
-            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .build()
-
-        imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-            val mediaImage = imageProxy.image
-            if (mediaImage != null) {
-                val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                detector.process(inputImage)
-                    .addOnSuccessListener { faces ->
-                        if (faces.isNotEmpty()) {
-                            // Convert to analyzer results for overlay
-                            val results = faces.map { face ->
-                                com.shadowlook.app.ml.FaceAnalyzer.FaceRecognitionResult(
-                                    face = face,
-                                    boundingBox = face.boundingBox,
-                                    userId = null,
-                                    userName = "وجه مكتشف",
-                                    jobTitle = null,
-                                    phone = null,
-                                    address = null,
-                                    imagePath = null,
-                                    distance = 0f,
-                                    isKnown = true,
-                                    faceBitmap = null
-                                )
-                            }
-                            runOnUiThread {
-                                overlayView.setResults(results)
-                            }
-                        } else {
-                            runOnUiThread { overlayView.setResults(emptyList()) }
-                        }
-                    }
-                    .addOnCompleteListener { imageProxy.close() }
-            } else {
-                imageProxy.close()
-            }
-        }
-
         try {
+            setContentView(R.layout.activity_register_face)
+
+            previewView = findViewById(R.id.previewViewRegister)
+            overlayView = findViewById(R.id.overlayViewRegister)
+            etName = findViewById(R.id.etFullName)
+            etPhone = findViewById(R.id.etPhone)
+            etJob = findViewById(R.id.etJobTitle)
+            etAddress = findViewById(R.id.etAddress)
+
+            try {
+                tfliteHelper = TFLiteHelper(this)
+            } catch (e: Throwable) {
+                Log.e("RegisterFace", "خطأ في TFLiteHelper: ${e.message}", e)
+                tfliteHelper = TFLiteHelper(this)
+            }
+
+            cameraExecutor = Executors.newSingleThreadExecutor()
+
+            if (allPermissionsGranted()) {
+                startCameraSafely()
+            } else {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 1002)
+            }
+
+            findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCaptureEnroll).setOnClickListener {
+                try {
+                    captureAndEnroll()
+                } catch (e: Throwable) {
+                    showErrorDialog("خطأ", "فشل التقاط الوجه: ${e.message}")
+                }
+            }
+        } catch (e: Throwable) {
+            Log.e("RegisterFace", "خطأ في onCreate: ${e.message}", e)
+            Toast.makeText(this, "خطأ في تشغيل شاشة التسجيل: ${e.message}", Toast.LENGTH_LONG).show()
+            finish()
+        }
+    }
+
+    private fun startCameraSafely() {
+        try {
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+            cameraProviderFuture.addListener({
+                try {
+                    cameraProvider = cameraProviderFuture.get()
+                    bindUseCasesSafely()
+                } catch (e: Throwable) {
+                    Log.e("RegisterFace", "خطأ في CameraProvider: ${e.message}", e)
+                    showErrorDialog("خطأ في الكاميرا", "فشل تهيئة الكاميرا: ${e.message}")
+                }
+            }, ContextCompat.getMainExecutor(this))
+        } catch (e: Throwable) {
+            Log.e("RegisterFace", "خطأ في startCamera: ${e.message}", e)
+            showErrorDialog("خطأ في الكاميرا", "فشل بدء الكاميرا: ${e.message}")
+        }
+    }
+
+    private fun bindUseCasesSafely() {
+        try {
+            val cameraProvider = cameraProvider ?: return
+
+            val preview = Preview.Builder().build().also {
+                it.setSurfaceProvider(previewView.surfaceProvider)
+            }
+
+            imageCapture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .build()
+
+            val imageAnalysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+
+            imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
+                try {
+                    val mediaImage = imageProxy.image
+                    if (mediaImage != null) {
+                        val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+                        detector.process(inputImage)
+                            .addOnSuccessListener { faces ->
+                                try {
+                                    if (faces.isNotEmpty()) {
+                                        val results = faces.map { face ->
+                                            com.shadowlook.app.ml.FaceAnalyzer.FaceRecognitionResult(
+                                                face = face,
+                                                boundingBox = face.boundingBox,
+                                                userId = null,
+                                                userName = "وجه مكتشف",
+                                                jobTitle = null,
+                                                phone = null,
+                                                address = null,
+                                                imagePath = null,
+                                                distance = 0f,
+                                                isKnown = true,
+                                                faceBitmap = null
+                                            )
+                                        }
+                                        runOnUiThread {
+                                            try {
+                                                overlayView.setResults(results)
+                                            } catch (e: Throwable) {
+                                            }
+                                        }
+                                    } else {
+                                        runOnUiThread { overlayView.setResults(emptyList()) }
+                                    }
+                                } catch (e: Throwable) {
+                                    Log.e("RegisterFace", "خطأ في معالجة الوجوه: ${e.message}")
+                                }
+                            }
+                            .addOnCompleteListener { imageProxy.close() }
+                    } else {
+                        imageProxy.close()
+                    }
+                } catch (e: Throwable) {
+                    try {
+                        imageProxy.close()
+                    } catch (e2: Throwable) {
+                    }
+                }
+            }
+
             cameraProvider.unbindAll()
             cameraProvider.bindToLifecycle(
                 this,
@@ -142,82 +190,97 @@ class RegisterFaceActivity : AppCompatActivity() {
                 imageCapture,
                 imageAnalysis
             )
-        } catch (e: Exception) {
-            Toast.makeText(this, "فشل تشغيل الكاميرا: ${e.message}", Toast.LENGTH_SHORT).show()
+        } catch (e: Throwable) {
+            Log.e("RegisterFace", "خطأ في bindUseCases: ${e.message}", e)
+            showErrorDialog("خطأ في الكاميرا", "فشل ربط الكاميرا: ${e.message}")
         }
     }
 
     private fun captureAndEnroll() {
-        val name = etName.text?.toString()?.trim() ?: ""
-        val phone = etPhone.text?.toString()?.trim() ?: ""
-        val job = etJob.text?.toString()?.trim() ?: ""
-        val address = etAddress.text?.toString()?.trim() ?: ""
+        try {
+            val name = etName.text?.toString()?.trim() ?: ""
+            val phone = etPhone.text?.toString()?.trim() ?: ""
+            val job = etJob.text?.toString()?.trim() ?: ""
+            val address = etAddress.text?.toString()?.trim() ?: ""
 
-        if (name.isEmpty()) {
-            etName.error = "الاسم مطلوب"
-            Toast.makeText(this, "الرجاء إدخال الاسم الكامل", Toast.LENGTH_SHORT).show()
-            return
-        }
+            if (name.isEmpty()) {
+                etName.error = "الاسم مطلوب"
+                Toast.makeText(this, "الرجاء إدخال الاسم الكامل", Toast.LENGTH_SHORT).show()
+                return
+            }
 
-        val imageCapture = imageCapture ?: run {
-            Toast.makeText(this, "الكاميرا غير جاهزة", Toast.LENGTH_SHORT).show()
-            return
-        }
+            val imageCapture = imageCapture ?: run {
+                Toast.makeText(this, "الكاميرا غير جاهزة", Toast.LENGTH_SHORT).show()
+                return
+            }
 
-        Toast.makeText(this, "جاري التقاط الوجه...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "جاري التقاط الوجه...", Toast.LENGTH_SHORT).show()
 
-        imageCapture.takePicture(
-            ContextCompat.getMainExecutor(this),
-            object : ImageCapture.OnImageCapturedCallback() {
-                override fun onCaptureSuccess(image: ImageProxy) {
-                    val bitmap = imageProxyToBitmap(image)
-                    image.close()
+            imageCapture.takePicture(
+                ContextCompat.getMainExecutor(this),
+                object : ImageCapture.OnImageCapturedCallback() {
+                    override fun onCaptureSuccess(image: ImageProxy) {
+                        try {
+                            val bitmap = imageProxyToBitmap(image)
+                            image.close()
 
-                    if (bitmap == null) {
-                        Toast.makeText(this@RegisterFaceActivity, "فشل التقاط الصورة", Toast.LENGTH_SHORT).show()
-                        return
+                            if (bitmap == null) {
+                                Toast.makeText(this@RegisterFaceActivity, "فشل التقاط الصورة", Toast.LENGTH_SHORT).show()
+                                return
+                            }
+
+                            val inputImage = InputImage.fromBitmap(bitmap, 0)
+                            detector.process(inputImage)
+                                .addOnSuccessListener { faces ->
+                                    try {
+                                        if (faces.isEmpty()) {
+                                            Toast.makeText(this@RegisterFaceActivity, "لم يتم كشف أي وجه! اقترب أكثر", Toast.LENGTH_LONG).show()
+                                            return@addOnSuccessListener
+                                        }
+
+                                        val face = faces[0]
+                                        val cropped = cropFace(bitmap, face.boundingBox)
+                                        if (cropped == null) {
+                                            Toast.makeText(this@RegisterFaceActivity, "فشل قص الوجه", Toast.LENGTH_SHORT).show()
+                                            return@addOnSuccessListener
+                                        }
+
+                                        scope.launch {
+                                            saveUser(cropped, name, phone, job, address)
+                                        }
+                                    } catch (e: Throwable) {
+                                        Toast.makeText(this@RegisterFaceActivity, "خطأ: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                                .addOnFailureListener { e ->
+                                    Toast.makeText(this@RegisterFaceActivity, "خطأ في كشف الوجه: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                        } catch (e: Throwable) {
+                            try {
+                                image.close()
+                            } catch (e2: Throwable) {
+                            }
+                            Toast.makeText(this@RegisterFaceActivity, "خطأ: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
                     }
 
-                    // كشف الوجه في الصورة الملتقطة
-                    val inputImage = InputImage.fromBitmap(bitmap, 0)
-                    detector.process(inputImage)
-                        .addOnSuccessListener { faces ->
-                            if (faces.isEmpty()) {
-                                Toast.makeText(this@RegisterFaceActivity, "لم يتم كشف أي وجه! اقترب أكثر", Toast.LENGTH_LONG).show()
-                                return@addOnSuccessListener
-                            }
-
-                            val face = faces[0]
-                            val cropped = cropFace(bitmap, face.boundingBox)
-                            if (cropped == null) {
-                                Toast.makeText(this@RegisterFaceActivity, "فشل قص الوجه", Toast.LENGTH_SHORT).show()
-                                return@addOnSuccessListener
-                            }
-
-                            // حفظ في قاعدة البيانات
-                            scope.launch {
-                                saveUser(cropped, name, phone, job, address)
-                            }
-                        }
-                        .addOnFailureListener { e ->
-                            Toast.makeText(this@RegisterFaceActivity, "خطأ في كشف الوجه: ${e.message}", Toast.LENGTH_SHORT).show()
-                        }
+                    override fun onError(exception: ImageCaptureException) {
+                        Toast.makeText(this@RegisterFaceActivity, "خطأ في الالتقاط: ${exception.message}", Toast.LENGTH_SHORT).show()
+                    }
                 }
-
-                override fun onError(exception: ImageCaptureException) {
-                    Toast.makeText(this@RegisterFaceActivity, "خطأ في الالتقاط: ${exception.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        )
+            )
+        } catch (e: Throwable) {
+            Log.e("RegisterFace", "خطأ في captureAndEnroll: ${e.message}", e)
+            showErrorDialog("خطأ", "فشل التسجيل: ${e.message}")
+        }
     }
 
     private suspend fun saveUser(faceBitmap: Bitmap, name: String, phone: String, job: String, address: String) = withContext(Dispatchers.IO) {
         try {
-            // 1. توليد embedding
-            val embedding = tfliteHelper.getFaceEmbedding(faceBitmap)
+            val helper = tfliteHelper ?: TFLiteHelper(this@RegisterFaceActivity)
+            val embedding = helper.getFaceEmbedding(faceBitmap)
             val embeddingJson = Converters.embeddingToJson(embedding)
 
-            // 2. حفظ الصورة
             val knownDir = File(this@RegisterFaceActivity.filesDir, "known_faces")
             if (!knownDir.exists()) knownDir.mkdirs()
 
@@ -227,7 +290,6 @@ class RegisterFaceActivity : AppCompatActivity() {
                 faceBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
             }
 
-            // 3. حفظ في Room
             val entity = UserFaceEntity(
                 name = name,
                 phone = phone,
@@ -246,14 +308,14 @@ class RegisterFaceActivity : AppCompatActivity() {
                     "✅ تم تسجيل $name بنجاح! // ENROLLED",
                     Toast.LENGTH_LONG
                 ).show()
-                // مسح الحقول
                 etName.text?.clear()
                 etPhone.text?.clear()
                 etJob.text?.clear()
                 etAddress.text?.clear()
             }
 
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            Log.e("RegisterFace", "خطأ في saveUser: ${e.message}", e)
             withContext(Dispatchers.Main) {
                 Toast.makeText(this@RegisterFaceActivity, "❌ فشل الحفظ: ${e.message}", Toast.LENGTH_LONG).show()
             }
@@ -266,10 +328,9 @@ class RegisterFaceActivity : AppCompatActivity() {
             val bytes = ByteArray(buffer.remaining())
             buffer.get(bytes)
             var bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-            // تدوير حسب rotation
             val matrix = Matrix().apply { postRotate(image.imageInfo.rotationDegrees.toFloat()) }
             Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             null
         }
     }
@@ -284,18 +345,35 @@ class RegisterFaceActivity : AppCompatActivity() {
             val w = right - left
             val h = bottom - top
             if (w > 0 && h > 0) Bitmap.createBitmap(fullBitmap, left, top, w, h) else null
-        } catch (e: Exception) { null }
+        } catch (e: Throwable) {
+            null
+        }
     }
 
     private fun allPermissionsGranted() = ContextCompat.checkSelfPermission(
         this, Manifest.permission.CAMERA
     ) == PackageManager.PERMISSION_GRANTED
 
+    private fun showErrorDialog(title: String, message: String) {
+        try {
+            AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton("حسناً") { d, _ -> d.dismiss() }
+                .show()
+        } catch (e: Throwable) {
+            Toast.makeText(this, "$title: $message", Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onDestroy() {
-        super.onDestroy()
-        cameraExecutor.shutdown()
-        scope.cancel()
-        detector.close()
-        tfliteHelper.close()
+        try {
+            super.onDestroy()
+            cameraExecutor.shutdown()
+            scope.cancel()
+            detector.close()
+            tfliteHelper?.close()
+        } catch (e: Throwable) {
+        }
     }
 }
