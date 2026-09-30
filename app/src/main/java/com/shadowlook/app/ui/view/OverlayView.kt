@@ -3,6 +3,7 @@ package com.shadowlook.app.ui.view
 import android.content.Context
 import android.graphics.*
 import android.util.AttributeSet
+import android.util.Log
 import android.view.View
 import com.shadowlook.app.ml.FaceAnalyzer
 
@@ -19,7 +20,6 @@ class OverlayView @JvmOverloads constructor(
     private var imageWidth: Int = 0
     private var imageHeight: Int = 0
 
-    // ألوان الثيم السيبراني
     private val neonCyan = Color.parseColor("#00F0FF")
     private val neonRed = Color.parseColor("#FF0055")
     private val neonGreen = Color.parseColor("#00FF66")
@@ -30,7 +30,6 @@ class OverlayView @JvmOverloads constructor(
         style = Paint.Style.STROKE
         strokeWidth = 4f
         isAntiAlias = true
-        pathEffect = null
     }
 
     private val unknownBoxPaint = Paint().apply {
@@ -59,177 +58,186 @@ class OverlayView @JvmOverloads constructor(
         typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
     }
 
-    private val smallTextPaint = Paint().apply {
-        color = Color.WHITE
-        textSize = 24f
-        isAntiAlias = true
-        typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
-    }
-
     fun setResults(results: List<FaceAnalyzer.FaceRecognitionResult>) {
-        this.results = results
-        invalidate()
+        try {
+            this.results = results
+            invalidate()
+        } catch (e: Throwable) {
+            Log.e("OverlayView", "خطأ في setResults: ${e.message}", e)
+        }
     }
 
     fun setImageSize(width: Int, height: Int) {
-        imageWidth = width
-        imageHeight = height
+        try {
+            imageWidth = width
+            imageHeight = height
+        } catch (e: Throwable) {
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
+        try {
+            super.onDraw(canvas)
 
-        if (imageWidth == 0 || imageHeight == 0) return
+            if (imageWidth == 0 || imageHeight == 0) return
+            if (results.isEmpty()) return
 
-        // حساب scaleFactor للحفاظ على نسبة العرض
-        val viewAspectRatio = width.toFloat() / height.toFloat()
-        val imageAspectRatio = imageWidth.toFloat() / imageHeight.toFloat()
+            val viewAspectRatio = width.toFloat() / height.toFloat()
+            val imageAspectRatio = imageWidth.toFloat() / imageHeight.toFloat()
 
-        if (viewAspectRatio > imageAspectRatio) {
-            scaleFactor = height.toFloat() / imageHeight.toFloat()
-            offsetX = (width - imageWidth * scaleFactor) / 2f
-            offsetY = 0f
-        } else {
-            scaleFactor = width.toFloat() / imageWidth.toFloat()
-            offsetX = 0f
-            offsetY = (height - imageHeight * scaleFactor) / 2f
-        }
-
-        for (result in results) {
-            val boundingBox = result.boundingBox
-            val isKnown = result.isKnown
-
-            // تحويل الإحداثيات
-            val left = boundingBox.left * scaleFactor + offsetX
-            val top = boundingBox.top * scaleFactor + offsetY
-            val right = boundingBox.right * scaleFactor + offsetX
-            val bottom = boundingBox.bottom * scaleFactor + offsetY
-
-            val rect = RectF(left, top, right, bottom)
-
-            if (isKnown) {
-                drawKnownFace(canvas, rect, result)
+            if (viewAspectRatio > imageAspectRatio) {
+                scaleFactor = height.toFloat() / imageHeight.toFloat()
+                offsetX = (width - imageWidth * scaleFactor) / 2f
+                offsetY = 0f
             } else {
-                drawUnknownFace(canvas, rect, result)
+                scaleFactor = width.toFloat() / imageWidth.toFloat()
+                offsetX = 0f
+                offsetY = (height - imageHeight * scaleFactor) / 2f
             }
+
+            for (result in results) {
+                try {
+                    val boundingBox = result.boundingBox
+                    if (boundingBox.isEmpty) continue
+
+                    val left = boundingBox.left * scaleFactor + offsetX
+                    val top = boundingBox.top * scaleFactor + offsetY
+                    val right = boundingBox.right * scaleFactor + offsetX
+                    val bottom = boundingBox.bottom * scaleFactor + offsetY
+
+                    if (left >= right || top >= bottom) continue
+
+                    val rect = RectF(left, top, right, bottom)
+
+                    if (result.isKnown) {
+                        drawKnownFace(canvas, rect, result)
+                    } else {
+                        drawUnknownFace(canvas, rect, result)
+                    }
+                } catch (e: Throwable) {
+                    Log.e("OverlayView", "خطأ في رسم وجه: ${e.message}", e)
+                }
+            }
+        } catch (e: Throwable) {
+            Log.e("OverlayView", "خطأ في onDraw: ${e.message}", e)
         }
     }
 
     private fun drawKnownFace(canvas: Canvas, rect: RectF, result: FaceAnalyzer.FaceRecognitionResult) {
-        // مربع نيون سماوي للمعروفين
-        knownBoxPaint.color = neonCyan
-        canvas.drawRoundRect(rect, 16f, 16f, knownBoxPaint)
+        try {
+            knownBoxPaint.color = neonCyan
+            canvas.drawRoundRect(rect, 16f, 16f, knownBoxPaint)
 
-        // زوايا HUD
-        cornerPaint.color = neonCyan
-        drawCorners(canvas, rect, cornerPaint)
+            cornerPaint.color = neonCyan
+            drawCorners(canvas, rect, cornerPaint)
 
-        // خلفية النص
-        val label = result.userName ?: "معروف"
-        val confidence = ((1 - result.distance) * 100).toInt().coerceIn(0, 100)
-        val text = "$label • $confidence%"
+            val label = result.userName ?: "معروف"
+            val confidence = ((1 - result.distance) * 100).toInt().coerceIn(0, 100)
+            val text = "$label • $confidence%"
 
-        val textWidth = textPaint.measureText(text)
-        val textHeight = 50f
-        val textBgRect = RectF(
-            rect.left,
-            rect.top - textHeight - 10,
-            rect.left + textWidth + 32,
-            rect.top - 10
-        )
+            val textWidth = textPaint.measureText(text)
+            val textHeight = 50f
+            val textBgRect = RectF(
+                rect.left,
+                (rect.top - textHeight - 10).coerceAtLeast(0f),
+                rect.left + textWidth + 32,
+                rect.top - 10
+            )
 
-        textBackgroundPaint.color = neonCyan
-        textBackgroundPaint.alpha = 230
-        canvas.drawRoundRect(textBgRect, 8f, 8f, textBackgroundPaint)
+            if (textBgRect.top >= 0) {
+                textBackgroundPaint.color = neonCyan
+                textBackgroundPaint.alpha = 230
+                canvas.drawRoundRect(textBgRect, 8f, 8f, textBackgroundPaint)
 
-        // نص الاسم والثقة
-        textPaint.color = darkBg
-        canvas.drawText(text, textBgRect.left + 16, textBgRect.bottom - 12, textPaint)
+                textPaint.color = darkBg
+                canvas.drawText(text, textBgRect.left + 16, textBgRect.bottom - 12, textPaint)
+            }
 
-        // مؤشر حالة أخضر صغير
-        val statusPaint = Paint().apply {
-            color = neonGreen
-            style = Paint.Style.FILL
+            val statusPaint = Paint().apply {
+                color = neonGreen
+                style = Paint.Style.FILL
+            }
+            canvas.drawCircle(rect.right - 20, rect.top + 20, 10f, statusPaint)
+
+            val glowPaint = Paint().apply {
+                color = neonCyan
+                style = Paint.Style.STROKE
+                strokeWidth = 12f
+                alpha = 30
+                isAntiAlias = true
+            }
+            canvas.drawRoundRect(rect, 16f, 16f, glowPaint)
+        } catch (e: Throwable) {
+            Log.e("OverlayView", "خطأ في drawKnownFace: ${e.message}", e)
         }
-        canvas.drawCircle(rect.right - 20, rect.top + 20, 10f, statusPaint)
-
-        // خط توهج خارجي
-        val glowPaint = Paint().apply {
-            color = neonCyan
-            style = Paint.Style.STROKE
-            strokeWidth = 12f
-            alpha = 30
-            isAntiAlias = true
-        }
-        canvas.drawRoundRect(rect, 16f, 16f, glowPaint)
     }
 
     private fun drawUnknownFace(canvas: Canvas, rect: RectF, result: FaceAnalyzer.FaceRecognitionResult) {
-        // مربع أحمر للمجهولين مع تأثير وميض
-        unknownBoxPaint.color = neonRed
-        canvas.drawRoundRect(rect, 16f, 16f, unknownBoxPaint)
+        try {
+            unknownBoxPaint.color = neonRed
+            canvas.drawRoundRect(rect, 16f, 16f, unknownBoxPaint)
 
-        // زوايا حمراء
-        cornerPaint.color = neonRed
-        drawCorners(canvas, rect, cornerPaint)
+            cornerPaint.color = neonRed
+            drawCorners(canvas, rect, cornerPaint)
 
-        // خلفية تحذير حمراء
-        val warningText = "⚠️ مجهول!"
-        val textWidth = textPaint.measureText(warningText)
-        val textHeight = 50f
-        val textBgRect = RectF(
-            rect.left,
-            rect.top - textHeight - 10,
-            rect.left + textWidth + 32,
-            rect.top - 10
-        )
+            val warningText = "⚠️ مجهول!"
+            val textWidth = textPaint.measureText(warningText)
+            val textHeight = 50f
+            val textBgRect = RectF(
+                rect.left,
+                (rect.top - textHeight - 10).coerceAtLeast(0f),
+                rect.left + textWidth + 32,
+                rect.top - 10
+            )
 
-        textBackgroundPaint.color = neonRed
-        textBackgroundPaint.alpha = 230
-        canvas.drawRoundRect(textBgRect, 8f, 8f, textBackgroundPaint)
+            if (textBgRect.top >= 0) {
+                textBackgroundPaint.color = neonRed
+                textBackgroundPaint.alpha = 230
+                canvas.drawRoundRect(textBgRect, 8f, 8f, textBackgroundPaint)
 
-        textPaint.color = Color.WHITE
-        canvas.drawText(warningText, textBgRect.left + 16, textBgRect.bottom - 12, textPaint)
+                textPaint.color = Color.WHITE
+                canvas.drawText(warningText, textBgRect.left + 16, textBgRect.bottom - 12, textPaint)
+            }
 
-        // خطوط تحذير قطرية
-        val warningLinePaint = Paint().apply {
-            color = neonRed
-            style = Paint.Style.STROKE
-            strokeWidth = 2f
-            alpha = 100
-            pathEffect = DashPathEffect(floatArrayOf(10f, 10f), 0f)
+            val warningLinePaint = Paint().apply {
+                color = neonRed
+                style = Paint.Style.STROKE
+                strokeWidth = 2f
+                alpha = 100
+                pathEffect = DashPathEffect(floatArrayOf(10f, 10f), 0f)
+            }
+            canvas.drawLine(rect.left, rect.top, rect.right, rect.bottom, warningLinePaint)
+            canvas.drawLine(rect.right, rect.top, rect.left, rect.bottom, warningLinePaint)
+
+            val glowPaint = Paint().apply {
+                color = neonRed
+                style = Paint.Style.STROKE
+                strokeWidth = 14f
+                alpha = 40
+                isAntiAlias = true
+            }
+            canvas.drawRoundRect(rect, 16f, 16f, glowPaint)
+        } catch (e: Throwable) {
+            Log.e("OverlayView", "خطأ في drawUnknownFace: ${e.message}", e)
         }
-        canvas.drawLine(rect.left, rect.top, rect.right, rect.bottom, warningLinePaint)
-        canvas.drawLine(rect.right, rect.top, rect.left, rect.bottom, warningLinePaint)
-
-        // توهج أحمر
-        val glowPaint = Paint().apply {
-            color = neonRed
-            style = Paint.Style.STROKE
-            strokeWidth = 14f
-            alpha = 40
-            isAntiAlias = true
-        }
-        canvas.drawRoundRect(rect, 16f, 16f, glowPaint)
     }
 
     private fun drawCorners(canvas: Canvas, rect: RectF, paint: Paint) {
-        val cornerLength = 30f
+        try {
+            val cornerLength = 30f
 
-        // Top-left
-        canvas.drawLine(rect.left, rect.top, rect.left + cornerLength, rect.top, paint)
-        canvas.drawLine(rect.left, rect.top, rect.left, rect.top + cornerLength, paint)
+            canvas.drawLine(rect.left, rect.top, rect.left + cornerLength, rect.top, paint)
+            canvas.drawLine(rect.left, rect.top, rect.left, rect.top + cornerLength, paint)
 
-        // Top-right
-        canvas.drawLine(rect.right - cornerLength, rect.top, rect.right, rect.top, paint)
-        canvas.drawLine(rect.right, rect.top, rect.right, rect.top + cornerLength, paint)
+            canvas.drawLine(rect.right - cornerLength, rect.top, rect.right, rect.top, paint)
+            canvas.drawLine(rect.right, rect.top, rect.right, rect.top + cornerLength, paint)
 
-        // Bottom-left
-        canvas.drawLine(rect.left, rect.bottom - cornerLength, rect.left, rect.bottom, paint)
-        canvas.drawLine(rect.left, rect.bottom, rect.left + cornerLength, rect.bottom, paint)
+            canvas.drawLine(rect.left, rect.bottom - cornerLength, rect.left, rect.bottom, paint)
+            canvas.drawLine(rect.left, rect.bottom, rect.left + cornerLength, rect.bottom, paint)
 
-        // Bottom-right
-        canvas.drawLine(rect.right - cornerLength, rect.bottom, rect.right, rect.bottom, paint)
-        canvas.drawLine(rect.right, rect.bottom - cornerLength, rect.right, rect.bottom, paint)
+            canvas.drawLine(rect.right - cornerLength, rect.bottom, rect.right, rect.bottom, paint)
+            canvas.drawLine(rect.right, rect.bottom - cornerLength, rect.right, rect.bottom, paint)
+        } catch (e: Throwable) {
+        }
     }
 }

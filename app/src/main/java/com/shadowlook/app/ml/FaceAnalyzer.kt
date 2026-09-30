@@ -16,8 +16,10 @@ import com.shadowlook.app.data.local.db.AppDatabase
 import com.shadowlook.app.data.local.entity.UnknownFaceEntity
 import com.shadowlook.app.ui.view.OverlayView
 import kotlinx.coroutines.*
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -26,31 +28,41 @@ class FaceAnalyzer(
     private val overlayView: OverlayView,
     private val tfliteHelper: TFLiteHelper,
     private val onFaceRecognized: (FaceRecognitionResult) -> Unit,
-    private val onUnknownFaceDetected: (Bitmap, FloatArray) -> Unit
+    private val onUnknownFaceDetected: (Bitmap, FloatArray) -> Unit,
+    private val onNoFaceDetected: () -> Unit = {}
 ) : ImageAnalysis.Analyzer {
 
     companion object {
         private const val TAG = "FaceAnalyzer"
-        private const val UNKNOWN_CAPTURE_COOLDOWN_MS = 5000L // 5 ثواني منع التكرار
+        private const val UNKNOWN_CAPTURE_COOLDOWN_MS = 5000L
     }
 
     private val detector by lazy {
-        val options = FaceDetectorOptions.Builder()
-            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-            .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
-            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
-            .build()
-        FaceDetection.getClient(options)
+        try {
+            val options = FaceDetectorOptions.Builder()
+                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+                .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
+                .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
+                .enableTracking()
+                .build()
+            FaceDetection.getClient(options)
+        } catch (e: Throwable) {
+            Log.e(TAG, "فشل إنشاء ML Kit detector: ${e.message}", e)
+            val options = FaceDetectorOptions.Builder()
+                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+                .build()
+            FaceDetection.getClient(options)
+        }
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var lastUnknownCaptureTime = 0L
     private var knownEmbeddingsCache: List<Pair<Int, FloatArray>> = emptyList()
     private var lastCacheUpdateTime = 0L
-    private val CACHE_VALIDITY_MS = 10000L // تحديث الكاش كل 10 ثواني
+    private val CACHE_VALIDITY_MS = 10000L
 
     data class FaceRecognitionResult(
-        val face: Face,
+        val face: Face?,
         val boundingBox: Rect,
         val userId: Int?,
         val userName: String?,
@@ -71,154 +83,202 @@ class FaceAnalyzer(
             return
         }
 
-        val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+        try {
+            val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
 
-        detector.process(inputImage)
-            .addOnSuccessListener { faces ->
-                if (faces.isNotEmpty()) {
-                    processFaces(faces, mediaImage, imageProxy)
-                } else {
-                    overlayView.setResults(emptyList())
-                    onFaceRecognized(
-                        FaceRecognitionResult(
-                            face = null as Face? ?: return@addOnSuccessListener,
-                            boundingBox = Rect(),
-                            userId = null,
-                            userName = null,
-                            jobTitle = null,
-                            phone = null,
-                            address = null,
-                            imagePath = null,
-                            distance = 0f,
-                            isKnown = false,
-                            faceBitmap = null
-                        )
-                    )
+            detector.process(inputImage)
+                .addOnSuccessListener { faces ->
+                    try {
+                        if (faces.isNotEmpty()) {
+                            processFaces(faces, mediaImage, imageProxy)
+                        } else {
+                            // لا يوجد وجوه - امسح الـ overlay وأبلغ
+                            try {
+                                overlayView.setResults(emptyList())
+                                onNoFaceDetected()
+                            } catch (e: Throwable) {
+                                Log.e(TAG, "خطأ في onNoFaceDetected: ${e.message}")
+                            }
+                        }
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "خطأ في معالجة النتائج: ${e.message}", e)
+                    }
                 }
-            }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "فشل كشف الوجه: ${e.message}", e)
-            }
-            .addOnCompleteListener {
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "فشل كشف الوجه: ${e.message}", e)
+                    try {
+                        overlayView.setResults(emptyList())
+                    } catch (e2: Throwable) {
+                    }
+                }
+                .addOnCompleteListener {
+                    try {
+                        imageProxy.close()
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "خطأ في إغلاق imageProxy: ${e.message}")
+                    }
+                }
+        } catch (e: Throwable) {
+            Log.e(TAG, "خطأ في analyze: ${e.message}", e)
+            try {
                 imageProxy.close()
+            } catch (e2: Throwable) {
             }
+        }
     }
 
     private fun processFaces(faces: List<Face>, mediaImage: Image, imageProxy: ImageProxy) {
         scope.launch {
-            // تحديث كاش الـ embeddings إذا لزم
-            updateKnownEmbeddingsCacheIfNeeded()
+            try {
+                updateKnownEmbeddingsCacheIfNeeded()
 
-            val fullBitmap = mediaImage.toBitmap(imageProxy.imageInfo.rotationDegrees)
-            val results = mutableListOf<FaceRecognitionResult>()
+                val fullBitmap = try {
+                    mediaImage.toBitmapSafe(imageProxy.imageInfo.rotationDegrees)
+                } catch (e: Throwable) {
+                    Log.e(TAG, "فشل تحويل Image إلى Bitmap: ${e.message}", e)
+                    return@launch
+                }
 
-            for (face in faces) {
-                val boundingBox = face.boundingBox
+                if (fullBitmap == null) {
+                    Log.e(TAG, "fullBitmap null")
+                    return@launch
+                }
 
-                // قص الوجه من الصورة الكاملة
-                val faceBitmap = cropFace(fullBitmap, boundingBox)
+                val results = mutableListOf<FaceRecognitionResult>()
 
-                if (faceBitmap != null) {
-                    // توليد embedding للوجه
-                    val embedding = tfliteHelper.getFaceEmbedding(faceBitmap)
+                for (face in faces) {
+                    try {
+                        val boundingBox = face.boundingBox
+                        val faceBitmap = cropFaceSafe(fullBitmap, boundingBox)
 
-                    // البحث عن مطابقة في قاعدة البيانات
-                    val (matchedId, distance, isMatch) = tfliteHelper.findBestMatch(
-                        embedding,
-                        knownEmbeddingsCache
-                    )
-
-                    if (isMatch && matchedId != null) {
-                        // وجه معروف
-                        val userEntity = getUserById(matchedId)
-                        val result = FaceRecognitionResult(
-                            face = face,
-                            boundingBox = boundingBox,
-                            userId = matchedId,
-                            userName = userEntity?.name ?: "مستخدم معروف",
-                            jobTitle = userEntity?.jobTitle,
-                            phone = userEntity?.phone,
-                            address = userEntity?.address,
-                            imagePath = userEntity?.imagePath,
-                            distance = distance,
-                            isKnown = true,
-                            faceBitmap = faceBitmap
-                        )
-                        results.add(result)
-                        withContext(Dispatchers.Main) {
-                            onFaceRecognized(result)
-                        }
-                    } else {
-                        // وجه مجهول - منطق الالتقاط التلقائي مع Cooldown 5 ثواني
-                        val currentTime = System.currentTimeMillis()
-                        val timeSinceLastCapture = currentTime - lastUnknownCaptureTime
-
-                        val result = FaceRecognitionResult(
-                            face = face,
-                            boundingBox = boundingBox,
-                            userId = null,
-                            userName = null,
-                            jobTitle = null,
-                            phone = null,
-                            address = null,
-                            imagePath = null,
-                            distance = distance,
-                            isKnown = false,
-                            faceBitmap = faceBitmap
-                        )
-                        results.add(result)
-
-                        withContext(Dispatchers.Main) {
-                            onFaceRecognized(result)
-                        }
-
-                        // منطق الحفظ التلقائي للمجهولين
-                        if (timeSinceLastCapture >= UNKNOWN_CAPTURE_COOLDOWN_MS) {
-                            lastUnknownCaptureTime = currentTime
-                            Log.d(TAG, "⏱️ تم تفعيل Cooldown - حفظ وجه مجهول جديد")
-
-                            // حفظ في الخلفية
-                            launch {
-                                saveUnknownFace(faceBitmap, embedding)
+                        if (faceBitmap != null) {
+                            val embedding = try {
+                                tfliteHelper.getFaceEmbedding(faceBitmap)
+                            } catch (e: Throwable) {
+                                Log.e(TAG, "فشل توليد embedding: ${e.message}", e)
+                                FloatArray(128) { 0f }
                             }
 
-                            withContext(Dispatchers.Main) {
-                                onUnknownFaceDetected(faceBitmap, embedding)
+                            val (matchedId, distance, isMatch) = try {
+                                tfliteHelper.findBestMatch(embedding, knownEmbeddingsCache)
+                            } catch (e: Throwable) {
+                                Triple(null, Float.MAX_VALUE, false)
                             }
-                        } else {
-                            Log.d(TAG, "⏳ Cooldown نشط - متبقي ${UNKNOWN_CAPTURE_COOLDOWN_MS - timeSinceLastCapture}ms")
+
+                            if (isMatch && matchedId != null) {
+                                val userEntity = getUserById(matchedId)
+                                val result = FaceRecognitionResult(
+                                    face = face,
+                                    boundingBox = boundingBox,
+                                    userId = matchedId,
+                                    userName = userEntity?.name ?: "مستخدم معروف",
+                                    jobTitle = userEntity?.jobTitle,
+                                    phone = userEntity?.phone,
+                                    address = userEntity?.address,
+                                    imagePath = userEntity?.imagePath,
+                                    distance = distance,
+                                    isKnown = true,
+                                    faceBitmap = faceBitmap
+                                )
+                                results.add(result)
+                                withContext(Dispatchers.Main) {
+                                    try {
+                                        onFaceRecognized(result)
+                                    } catch (e: Throwable) {
+                                        Log.e(TAG, "خطأ في onFaceRecognized: ${e.message}")
+                                    }
+                                }
+                            } else {
+                                val currentTime = System.currentTimeMillis()
+                                val timeSinceLastCapture = currentTime - lastUnknownCaptureTime
+
+                                val result = FaceRecognitionResult(
+                                    face = face,
+                                    boundingBox = boundingBox,
+                                    userId = null,
+                                    userName = null,
+                                    jobTitle = null,
+                                    phone = null,
+                                    address = null,
+                                    imagePath = null,
+                                    distance = distance,
+                                    isKnown = false,
+                                    faceBitmap = faceBitmap
+                                )
+                                results.add(result)
+
+                                withContext(Dispatchers.Main) {
+                                    try {
+                                        onFaceRecognized(result)
+                                    } catch (e: Throwable) {
+                                    }
+                                }
+
+                                if (timeSinceLastCapture >= UNKNOWN_CAPTURE_COOLDOWN_MS) {
+                                    lastUnknownCaptureTime = currentTime
+                                    launch {
+                                        try {
+                                            saveUnknownFace(faceBitmap, embedding)
+                                        } catch (e: Throwable) {
+                                            Log.e(TAG, "خطأ في saveUnknownFace: ${e.message}", e)
+                                        }
+                                    }
+                                    withContext(Dispatchers.Main) {
+                                        try {
+                                            onUnknownFaceDetected(faceBitmap, embedding)
+                                        } catch (e: Throwable) {
+                                        }
+                                    }
+                                }
+                            }
                         }
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "خطأ في معالجة وجه واحد: ${e.message}", e)
                     }
                 }
-            }
 
-            // تحديث OverlayView بالمربعات
-            withContext(Dispatchers.Main) {
-                overlayView.setResults(results)
+                withContext(Dispatchers.Main) {
+                    try {
+                        overlayView.setResults(results)
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "خطأ في setResults: ${e.message}", e)
+                    }
+                }
+
+                // تنظيف
+                try {
+                    if (!fullBitmap.isRecycled) {
+                        // لا نعيد تدوير fullBitmap لأنه قد يستخدم مرة أخرى
+                    }
+                } catch (e: Throwable) {
+                }
+
+            } catch (e: Throwable) {
+                Log.e(TAG, "خطأ في processFaces: ${e.message}", e)
             }
         }
     }
 
     private suspend fun updateKnownEmbeddingsCacheIfNeeded() {
-        val currentTime = System.currentTimeMillis()
-        if (currentTime - lastCacheUpdateTime > CACHE_VALIDITY_MS || knownEmbeddingsCache.isEmpty()) {
-            try {
+        try {
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastCacheUpdateTime > CACHE_VALIDITY_MS || knownEmbeddingsCache.isEmpty()) {
                 val db = AppDatabase.getDatabase(context)
                 val knownUsers = db.userFaceDao().getAllKnownsList()
                 knownEmbeddingsCache = knownUsers.mapNotNull { user ->
                     try {
                         val embedding = Converters.jsonToEmbedding(user.vectorEmbedding)
                         Pair(user.id, embedding)
-                    } catch (e: Exception) {
+                    } catch (e: Throwable) {
                         Log.e(TAG, "خطأ في تحويل embedding للمستخدم ${user.id}: ${e.message}")
                         null
                     }
                 }
                 lastCacheUpdateTime = currentTime
                 Log.d(TAG, "تم تحديث كاش الـ embeddings: ${knownEmbeddingsCache.size} مستخدم")
-            } catch (e: Exception) {
-                Log.e(TAG, "خطأ في تحديث الكاش: ${e.message}", e)
             }
+        } catch (e: Throwable) {
+            Log.e(TAG, "خطأ في تحديث الكاش: ${e.message}", e)
         }
     }
 
@@ -226,7 +286,7 @@ class FaceAnalyzer(
         try {
             val db = AppDatabase.getDatabase(context)
             db.userFaceDao().getKnownById(userId)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "خطأ في جلب المستخدم $userId: ${e.message}")
             null
         }
@@ -234,7 +294,6 @@ class FaceAnalyzer(
 
     private suspend fun saveUnknownFace(faceBitmap: Bitmap, embedding: FloatArray) = withContext(Dispatchers.IO) {
         try {
-            // 1. حفظ الصورة في /unknown_faces/
             val unknownDir = File(context.filesDir, "unknown_faces")
             if (!unknownDir.exists()) unknownDir.mkdirs()
 
@@ -246,7 +305,6 @@ class FaceAnalyzer(
                 faceBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
             }
 
-            // 2. حفظ في Room DB
             val embeddingJson = Converters.embeddingToJson(embedding)
             val unknownEntity = UnknownFaceEntity(
                 timestamp = timestamp,
@@ -260,14 +318,13 @@ class FaceAnalyzer(
 
             Log.d(TAG, "✅ تم حفظ وجه مجهول: $fileName")
 
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "❌ فشل حفظ الوجه المجهول: ${e.message}", e)
         }
     }
 
-    private fun cropFace(fullBitmap: Bitmap, boundingBox: Rect): Bitmap? {
+    private fun cropFaceSafe(fullBitmap: Bitmap, boundingBox: Rect): Bitmap? {
         return try {
-            // توسيع المربع قليلاً ليشمل كامل الوجه
             val padding = 20
             val left = (boundingBox.left - padding).coerceAtLeast(0)
             val top = (boundingBox.top - padding).coerceAtLeast(0)
@@ -277,32 +334,82 @@ class FaceAnalyzer(
             val width = right - left
             val height = bottom - top
 
-            if (width > 0 && height > 0) {
+            if (width > 0 && height > 0 && width <= fullBitmap.width && height <= fullBitmap.height) {
                 Bitmap.createBitmap(fullBitmap, left, top, width, height)
             } else null
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "خطأ في قص الوجه: ${e.message}")
             null
         }
     }
 
-    // تحويل Image إلى Bitmap
-    private fun Image.toBitmap(rotationDegrees: Int): Bitmap {
-        val buffer = planes[0].buffer
-        val bytes = ByteArray(buffer.remaining())
-        buffer.get(bytes)
-        var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    // تحويل YUV_420_888 إلى Bitmap بطريقة آمنة وصحيحة
+    private fun Image.toBitmapSafe(rotationDegrees: Int): Bitmap? {
+        return try {
+            // الطريقة الصحيحة لتحويل YUV إلى Bitmap
+            val yBuffer = planes[0].buffer
+            val uBuffer = planes[1].buffer
+            val vBuffer = planes[2].buffer
 
-        // تطبيق الدوران
-        if (rotationDegrees != 0) {
-            val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
-            bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            val ySize = yBuffer.remaining()
+            val uSize = uBuffer.remaining()
+            val vSize = vBuffer.remaining()
+
+            val nv21 = ByteArray(ySize + uSize + vSize)
+
+            yBuffer.get(nv21, 0, ySize)
+            vBuffer.get(nv21, ySize, vSize)
+            uBuffer.get(nv21, ySize + vSize, uSize)
+
+            val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
+            val out = ByteArrayOutputStream()
+            yuvImage.compressToJpeg(Rect(0, 0, width, height), 90, out)
+            val imageBytes = out.toByteArray()
+            var bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+
+            if (bitmap == null) {
+                // Fallback: try simple method
+                Log.w(TAG, "فشل YUV conversion، محاولة fallback")
+                return toBitmapFallback(rotationDegrees)
+            }
+
+            if (rotationDegrees != 0) {
+                val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+                bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            }
+            bitmap
+        } catch (e: Throwable) {
+            Log.e(TAG, "خطأ في toBitmapSafe: ${e.message}", e)
+            try {
+                toBitmapFallback(rotationDegrees)
+            } catch (e2: Throwable) {
+                null
+            }
         }
-        return bitmap
+    }
+
+    private fun Image.toBitmapFallback(rotationDegrees: Int): Bitmap? {
+        return try {
+            val buffer = planes[0].buffer
+            val bytes = ByteArray(buffer.remaining())
+            buffer.get(bytes)
+            var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+            if (rotationDegrees != 0) {
+                val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+                bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            }
+            bitmap
+        } catch (e: Throwable) {
+            null
+        }
     }
 
     fun close() {
-        scope.cancel()
-        detector.close()
+        try {
+            scope.cancel()
+            detector.close()
+        } catch (e: Throwable) {
+            Log.e(TAG, "خطأ في close: ${e.message}", e)
+        }
     }
 }
