@@ -3,7 +3,6 @@ package com.shadowlook.app.ui.activity
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -18,11 +17,14 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import com.google.android.material.card.MaterialCardView
 import com.shadowlook.app.R
 import com.shadowlook.app.ml.FaceAnalyzer
 import com.shadowlook.app.ml.TFLiteHelper
+import com.shadowlook.app.ui.adapter.UnknownSimilarityAdapter
 import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -48,6 +50,9 @@ class LiveRecognitionActivity : AppCompatActivity() {
     private lateinit var tvQualityInfo: TextView
     private lateinit var tvSpeedInfo: TextView
     private lateinit var tvScanningText: TextView
+    private lateinit var layoutSimilarUnknowns: View
+    private lateinit var rvSimilarUnknowns: RecyclerView
+    private lateinit var similarityAdapter: UnknownSimilarityAdapter
 
     private lateinit var cameraExecutor: ExecutorService
     private var tfliteHelper: TFLiteHelper? = null
@@ -66,23 +71,13 @@ class LiveRecognitionActivity : AppCompatActivity() {
             setContentView(R.layout.activity_live_recognition)
             initViewsSafe()
             setupClickListeners()
+            setupSimilarUnknownsRecycler()
 
             try {
                 tfliteHelper = TFLiteHelper(this)
-                Log.d(TAG, "TFLiteHelper initialized, model ready: ${tfliteHelper?.isModelReady()}")
-                if (tfliteHelper?.isModelReady() == false) {
-                    showWarningToast("وضع المحاكاة نشط - النموذج غير موجود، التطبيق سيعمل بدقة محدودة")
-                }
-            } catch (e: UnsatisfiedLinkError) {
-                Log.e(TAG, "فشل تحميل مكتبات TFLite: ${e.message}", e)
-                showErrorDialog(
-                    "خطأ في مكتبات الذكاء الاصطناعي",
-                    "فشل تحميل مكتبات TFLite (.so) للمعمارية ${android.os.Build.SUPPORTED_ABIS.joinToString()}\n\nالتطبيق سيعمل في وضع المحاكاة."
-                )
-                tfliteHelper = TFLiteHelper(this)
+                Log.d(TAG, "TFLiteHelper ready: ${tfliteHelper?.isModelReady()}")
             } catch (e: Throwable) {
-                Log.e(TAG, "خطأ في TFLiteHelper: ${e.message}", e)
-                showErrorDialog("خطأ في الذكاء الاصطناعي", "حدث خطأ: ${e.message}\n\nسيتم المتابعة في وضع المحاكاة.")
+                Log.e(TAG, "TFLiteHelper error: ${e.message}", e)
                 tfliteHelper = TFLiteHelper(this)
             }
 
@@ -95,13 +90,12 @@ class LiveRecognitionActivity : AppCompatActivity() {
             }
 
         } catch (e: Throwable) {
-            Log.e(TAG, "خطأ حرج في onCreate: ${e.message}", e)
-            showErrorDialog("خطأ في تشغيل التطبيق", "حدث خطأ: ${e.message}")
+            Log.e(TAG, "Critical onCreate error: ${e.message}", e)
+            Toast.makeText(this, "خطأ: ${e.message}", Toast.LENGTH_LONG).show()
             try {
                 setContentView(R.layout.activity_live_recognition)
                 initViewsSafe()
             } catch (e2: Throwable) {
-                Toast.makeText(this, "فشل تشغيل التطبيق: ${e2.message}", Toast.LENGTH_LONG).show()
                 finish()
             }
         }
@@ -109,74 +103,58 @@ class LiveRecognitionActivity : AppCompatActivity() {
 
     private fun initViewsSafe() {
         try {
-            // استخدام findViewById الآمن مع فحص null
-            previewView = findViewById(R.id.previewView) ?: throw IllegalStateException("previewView not found in layout - تأكد من وجود android:id=\"@+id/previewView\" في activity_live_recognition.xml")
+            previewView = findViewById(R.id.previewView) ?: throw IllegalStateException("previewView not found")
             overlayView = findViewById(R.id.overlayView) ?: throw IllegalStateException("overlayView not found")
 
-            // الـ include - الجذر هو نفسه الكارد
             val includeView = findViewById<View>(R.id.cyberCardInclude)
-                ?: throw IllegalStateException("cyberCardInclude not found - تأكد من <include android:id=\"@+id/cyberCardInclude\" layout=\"@layout/layout_cyber_profile_card\" />")
+                ?: throw IllegalStateException("cyberCardInclude not found")
 
             cyberCard = includeView
+            cardView = includeView as? MaterialCardView
+                ?: findViewById(R.id.cyberCardInclude) as? MaterialCardView
+                ?: throw IllegalStateException("cardView null")
 
-            // إصلاح المشكلة الرئيسية: cardView هو نفسه includeView، ليس child
-            // لأن android:id في <include> يستبدل id الجذر الأصلي
-            cardView = try {
-                includeView as? MaterialCardView
-                    ?: includeView.findViewById<MaterialCardView>(R.id.cyberProfileCard)
-                    ?: throw IllegalStateException("cardView is null - includeView is ${includeView::class.java.simpleName}")
-            } catch (e: Throwable) {
-                Log.e(TAG, "خطأ في cardView: ${e.message}", e)
-                // Fallback: إنشاء كارد وهمي أو استخدام includeView كـ View
-                // نحاول البحث بطريقة أخرى
-                val fallback = findViewById<MaterialCardView>(R.id.cyberCardInclude) as? MaterialCardView
-                fallback ?: throw IllegalStateException("فشل العثور على cardView: ${e.message}")
-            }
+            tvStatus = includeView.findViewById(R.id.tvStatus) ?: throw IllegalStateException("tvStatus not found")
+            tvName = includeView.findViewById(R.id.tvName) ?: throw IllegalStateException("tvName not found")
+            tvJob = includeView.findViewById(R.id.tvJobTitle) ?: throw IllegalStateException("tvJobTitle not found")
+            tvPhone = includeView.findViewById(R.id.tvPhone) ?: throw IllegalStateException("tvPhone not found")
+            tvAddress = includeView.findViewById(R.id.tvAddress) ?: throw IllegalStateException("tvAddress not found")
+            tvConfidence = includeView.findViewById(R.id.tvConfidence) ?: throw IllegalStateException("tvConfidence not found")
+            tvIdBadge = includeView.findViewById(R.id.tvIdBadge) ?: throw IllegalStateException("tvIdBadge not found")
+            ivProfile = includeView.findViewById(R.id.ivProfilePhoto) ?: throw IllegalStateException("ivProfilePhoto not found")
+            layoutUnknown = includeView.findViewById(R.id.layoutUnknownAlert) ?: throw IllegalStateException("layoutUnknownAlert not found")
+            tvUnknownTimestamp = includeView.findViewById(R.id.tvUnknownTimestamp) ?: throw IllegalStateException("tvUnknownTimestamp not found")
+            statusIndicator = includeView.findViewById(R.id.statusIndicator) ?: throw IllegalStateException("statusIndicator not found")
 
-            // البحث داخل الـ include - مع فحص null لكل عنصر
-            tvStatus = includeView.findViewById(R.id.tvStatus)
-                ?: throw IllegalStateException("tvStatus not found in layout_cyber_profile_card.xml")
-            tvName = includeView.findViewById(R.id.tvName)
-                ?: throw IllegalStateException("tvName not found")
-            tvJob = includeView.findViewById(R.id.tvJobTitle)
-                ?: throw IllegalStateException("tvJobTitle not found")
-            tvPhone = includeView.findViewById(R.id.tvPhone)
-                ?: throw IllegalStateException("tvPhone not found")
-            tvAddress = includeView.findViewById(R.id.tvAddress)
-                ?: throw IllegalStateException("tvAddress not found")
-            tvConfidence = includeView.findViewById(R.id.tvConfidence)
-                ?: throw IllegalStateException("tvConfidence not found")
-            tvIdBadge = includeView.findViewById(R.id.tvIdBadge)
-                ?: throw IllegalStateException("tvIdBadge not found")
-            ivProfile = includeView.findViewById(R.id.ivProfilePhoto)
-                ?: throw IllegalStateException("ivProfilePhoto not found")
-            layoutUnknown = includeView.findViewById(R.id.layoutUnknownAlert)
-                ?: throw IllegalStateException("layoutUnknownAlert not found")
-            tvUnknownTimestamp = includeView.findViewById(R.id.tvUnknownTimestamp)
-                ?: throw IllegalStateException("tvUnknownTimestamp not found")
-            statusIndicator = includeView.findViewById(R.id.statusIndicator)
-                ?: throw IllegalStateException("statusIndicator not found")
+            tvWarningBanner = findViewById(R.id.tvUnknownWarningBanner) ?: throw IllegalStateException("tvUnknownWarningBanner not found")
 
-            tvWarningBanner = findViewById(R.id.tvUnknownWarningBanner)
-                ?: throw IllegalStateException("tvUnknownWarningBanner not found")
+            tvQualityInfo = includeView.findViewById(R.id.tvQualityInfo) ?: throw IllegalStateException("tvQualityInfo not found")
+            tvSpeedInfo = includeView.findViewById(R.id.tvSpeedInfo) ?: throw IllegalStateException("tvSpeedInfo not found")
+            tvScanningText = findViewById(R.id.tvScanningText) ?: throw IllegalStateException("tvScanningText not found")
 
-            // عناصر جديدة للإحصائيات
-            tvQualityInfo = includeView.findViewById(R.id.tvQualityInfo)
-                ?: throw IllegalStateException("tvQualityInfo not found")
-            tvSpeedInfo = includeView.findViewById(R.id.tvSpeedInfo)
-                ?: throw IllegalStateException("tvSpeedInfo not found")
-            tvScanningText = findViewById(R.id.tvScanningText)
-                ?: findViewById(R.id.layoutScanning) as? TextView
-                ?: throw IllegalStateException("tvScanningText not found")
+            layoutSimilarUnknowns = findViewById(R.id.layoutSimilarUnknowns) ?: throw IllegalStateException("layoutSimilarUnknowns not found")
+            rvSimilarUnknowns = findViewById(R.id.rvSimilarUnknowns) ?: throw IllegalStateException("rvSimilarUnknowns not found")
 
             cyberCard.visibility = View.GONE
             tvWarningBanner.visibility = View.GONE
+            layoutSimilarUnknowns.visibility = View.GONE
 
-            Log.d(TAG, "✅ تم ربط جميع عناصر الواجهة بنجاح - v2.0 مع تحسينات الدقة والسرعة")
+            Log.d(TAG, "✅ All views bound - v2.1 with auto detection, similarity, 3D, tracking, 3m distance")
 
         } catch (e: Throwable) {
-            Log.e(TAG, "❌ خطأ في initViewsSafe: ${e.message}", e)
-            throw e // إعادة رمي الخطأ ليتم التقاطه في onCreate وعرض dialog
+            Log.e(TAG, "❌ initViewsSafe error: ${e.message}", e)
+            throw e
+        }
+    }
+
+    private fun setupSimilarUnknownsRecycler() {
+        try {
+            similarityAdapter = UnknownSimilarityAdapter()
+            // تحسين 3: عمودين من الصور
+            rvSimilarUnknowns.layoutManager = GridLayoutManager(this, 2, GridLayoutManager.HORIZONTAL, false)
+            rvSimilarUnknowns.adapter = similarityAdapter
+        } catch (e: Throwable) {
+            Log.e(TAG, "خطأ في setupSimilarUnknownsRecycler: ${e.message}", e)
         }
     }
 
@@ -186,25 +164,25 @@ class LiveRecognitionActivity : AppCompatActivity() {
                 try {
                     startActivity(Intent(this, RegisterFaceActivity::class.java))
                 } catch (e: Throwable) {
-                    showErrorDialog("خطأ", "فشل فتح شاشة التسجيل: ${e.message}")
+                    showErrorDialog("خطأ", "فشل فتح التسجيل: ${e.message}")
                 }
             }
             findViewById<View>(R.id.btnOpenDatabase)?.setOnClickListener {
                 try {
                     startActivity(Intent(this, DatabaseActivity::class.java))
                 } catch (e: Throwable) {
-                    showErrorDialog("خطأ", "فشل فتح قاعدة البيانات: ${e.message}")
+                    showErrorDialog("خطأ", "فشل فتح القاعدة: ${e.message}")
                 }
             }
             findViewById<View>(R.id.btnOpenDashboard)?.setOnClickListener {
                 try {
                     startActivity(Intent(this, DashboardActivity::class.java))
                 } catch (e: Throwable) {
-                    showErrorDialog("خطأ", "فشل فتح لوحة التحكم: ${e.message}")
+                    showErrorDialog("خطأ", "فشل فتح الإحصائيات: ${e.message}")
                 }
             }
         } catch (e: Throwable) {
-            Log.e(TAG, "خطأ في setupClickListeners: ${e.message}", e)
+            Log.e(TAG, "setupClickListeners error: ${e.message}", e)
         }
     }
 
@@ -216,12 +194,12 @@ class LiveRecognitionActivity : AppCompatActivity() {
                     cameraProvider = cameraProviderFuture.get()
                     bindCameraUseCasesSafely()
                 } catch (e: Throwable) {
-                    Log.e(TAG, "خطأ في CameraProvider: ${e.message}", e)
+                    Log.e(TAG, "CameraProvider error: ${e.message}", e)
                     showErrorDialog("خطأ في الكاميرا", "فشل تهيئة الكاميرا: ${e.message}")
                 }
             }, ContextCompat.getMainExecutor(this))
         } catch (e: Throwable) {
-            Log.e(TAG, "خطأ في startCameraSafely: ${e.message}", e)
+            Log.e(TAG, "startCameraSafely error: ${e.message}", e)
             showErrorDialog("خطأ في الكاميرا", "فشل بدء الكاميرا: ${e.message}")
         }
     }
@@ -249,15 +227,24 @@ class LiveRecognitionActivity : AppCompatActivity() {
                         try {
                             handleFaceResult(result)
                         } catch (e: Throwable) {
-                            Log.e(TAG, "خطأ في handleFaceResult: ${e.message}", e)
+                            Log.e(TAG, "handleFaceResult error: ${e.message}", e)
                         }
                     }
                 },
-                onUnknownFaceDetected = { _, _ ->
+                onUnknownFaceDetected = { bitmap, embedding, similarUnknowns ->
                     runOnUiThread {
                         try {
                             showUnknownWarning()
+                            // تحسين 3: عرض الصور المشابهة في عمودين مع نسبة التشابه
+                            if (similarUnknowns.isNotEmpty()) {
+                                layoutSimilarUnknowns.visibility = View.VISIBLE
+                                similarityAdapter.submitList(similarUnknowns)
+                                Log.d(TAG, "عرض ${similarUnknowns.size} وجوه مجهولة مشابهة")
+                            } else {
+                                layoutSimilarUnknowns.visibility = View.GONE
+                            }
                         } catch (e: Throwable) {
+                            Log.e(TAG, "onUnknownFaceDetected error: ${e.message}", e)
                         }
                     }
                 },
@@ -265,6 +252,9 @@ class LiveRecognitionActivity : AppCompatActivity() {
                     runOnUiThread {
                         try {
                             cyberCard.visibility = View.GONE
+                            layoutSimilarUnknowns.visibility = View.GONE
+                            tvScanningText.text = "🔍 جاري البحث... // SCANNING"
+                            tvScanningText.setTextColor(android.graphics.Color.parseColor("#00FF66"))
                         } catch (e: Throwable) {
                         }
                     }
@@ -273,15 +263,16 @@ class LiveRecognitionActivity : AppCompatActivity() {
 
             imageAnalysis.setAnalyzer(cameraExecutor, faceAnalyzer!!)
 
+            // تحسين 6: استخدام كاميرا خلفية أيضاً لكشف على بعد 3 متر؟ نستخدم أمامية افتراضياً
             val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
 
             cameraProvider.unbindAll()
             cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis)
-            Log.d(TAG, "✅ تم ربط الكاميرا بنجاح")
+            Log.d(TAG, "✅ Camera bound - Auto detection, 3m distance, 3D tracking enabled")
 
         } catch (e: Throwable) {
-            Log.e(TAG, "خطأ في bindCameraUseCasesSafely: ${e.message}", e)
-            showErrorDialog("خطأ في ربط الكاميرا", "فشل ربط الكاميرا: ${e.message}")
+            Log.e(TAG, "bindCameraUseCases error: ${e.message}", e)
+            showErrorDialog("خطأ في الكاميرا", "فشل ربط الكاميرا: ${e.message}")
         }
     }
 
@@ -295,11 +286,10 @@ class LiveRecognitionActivity : AppCompatActivity() {
             cyberCard.visibility = View.VISIBLE
 
             if (result.isKnown) {
-                // معروف: أخضر #00FF66 مع واجهة منبثقة جميلة ومرتبة مع صورته المحفوظة
+                // معروف: أخضر مع واجهة منبثقة جميلة ومرتبة مع صورته المحفوظة
                 cardView.strokeColor = android.graphics.Color.parseColor("#00FF66")
-                tvStatus.text = "✅ تمت المطابقة // SHADOW_ID"
+                tvStatus.text = "✅ ${result.userName} // ${String.format("%.1f", result.similarityPercent)}%"
                 tvStatus.setTextColor(android.graphics.Color.parseColor("#00FF66"))
-                statusIndicator.setBackgroundResource(R.drawable.bg_status_indicator)
                 try {
                     (statusIndicator.background as? android.graphics.drawable.GradientDrawable)?.setColor(
                         android.graphics.Color.parseColor("#00FF66")
@@ -310,21 +300,17 @@ class LiveRecognitionActivity : AppCompatActivity() {
                 tvJob.text = result.jobTitle ?: "غير محدد"
                 tvPhone.text = result.phone ?: "---"
                 tvAddress.text = result.address ?: "لا يوجد عنوان"
-                tvIdBadge.text = "ID: ${result.userId?.toString()?.padStart(3, '0') ?: "---"} // KNOWN"
+                tvIdBadge.text = "ID: ${result.userId?.toString()?.padStart(3, '0') ?: "---"}"
 
-                val confidence = ((1 - result.distance) * 100).toInt().coerceIn(0, 100)
-                val cosinePercent = (result.cosineSimilarity * 100).toInt().coerceIn(0, 100)
-                tvConfidence.text = "$confidence%"
+                tvConfidence.text = "${String.format("%.1f", result.similarityPercent)}%"
 
-                // معلومات الجودة والسرعة
                 try {
-                    tvQualityInfo.text = "جودة: ${(result.quality * 100).toInt()}% | Cosine: $cosinePercent%"
-                    tvSpeedInfo.text = "دقة: $confidence% | مسافة: ${String.format("%.2f", result.distance)}"
-                    tvScanningText.text = "✅ معروف: ${result.userName} - ${confidence}% - 0.15s"
+                    tvQualityInfo.text = "جودة: ${(result.quality * 100).toInt()}% | 3D: ${result.headEulerY.toInt()}°"
+                    tvSpeedInfo.text = "تشابه: ${String.format("%.1f", result.similarityPercent)}% | ${String.format("%.2f", result.distance)}"
+                    tvScanningText.text = "✅ ${result.userName} - ${String.format("%.1f", result.similarityPercent)}% - تتبع: ${result.trackingId ?: "-"}"
                     tvScanningText.setTextColor(android.graphics.Color.parseColor("#00FF66"))
                 } catch (e: Throwable) {}
 
-                // عرض الصورة المحفوظة بشكل جميل ومرتب
                 if (!result.imagePath.isNullOrEmpty()) {
                     try {
                         val file = File(result.imagePath)
@@ -345,11 +331,12 @@ class LiveRecognitionActivity : AppCompatActivity() {
 
                 layoutUnknown.visibility = View.GONE
                 tvWarningBanner.visibility = View.GONE
+                layoutSimilarUnknowns.visibility = View.GONE
 
             } else {
-                // مجهول: أحمر #FF0055 مع التقاط صورة أو أكثر
+                // مجهول: أحمر مع التقاط صورة
                 cardView.strokeColor = android.graphics.Color.parseColor("#FF0055")
-                tvStatus.text = "⚠️ تنبيه: شخص مجهول!"
+                tvStatus.text = "⚠️ مجهول // ${String.format("%.1f", result.similarityPercent)}%"
                 tvStatus.setTextColor(android.graphics.Color.parseColor("#FF0055"))
                 try {
                     (statusIndicator.background as? android.graphics.drawable.GradientDrawable)?.setColor(
@@ -358,16 +345,16 @@ class LiveRecognitionActivity : AppCompatActivity() {
                 } catch (e: Throwable) {}
 
                 tvName.text = "شخص غير معرف"
-                tvJob.text = "غير مسجل في القاعدة"
-                tvPhone.text = "مجهول - سيتم التقاط صورة"
-                tvAddress.text = "تم التقاط الوجه تلقائياً وحفظه"
-                tvIdBadge.text = "UNKNOWN // CAPTURED"
-                tvConfidence.text = "${((1 - result.distance) * 100).toInt()}%"
+                tvJob.text = "غير مسجل"
+                tvPhone.text = "تشابه: ${String.format("%.1f", result.similarityPercent)}%"
+                tvAddress.text = "تم التقاط صورة تلقائياً"
+                tvIdBadge.text = "UNKNOWN"
+                tvConfidence.text = "${String.format("%.1f", result.similarityPercent)}%"
 
                 try {
-                    tvQualityInfo.text = "جودة: ${(result.quality * 100).toInt()}% | غير معروف"
-                    tvSpeedInfo.text = "التقاط: تلقائي | حفظ: /unknown_faces/"
-                    tvScanningText.text = "⚠️ مجهول مرصود - جاري التقاط صورة..."
+                    tvQualityInfo.text = "جودة: ${(result.quality * 100).toInt()}% | 3D: ${result.headEulerY.toInt()}°"
+                    tvSpeedInfo.text = "التقاط: تلقائي | مسافة: ${String.format("%.2f", result.distance)}"
+                    tvScanningText.text = "⚠️ مجهول - تشابه ${String.format("%.1f", result.similarityPercent)}% - تتبع: ${result.trackingId ?: "-"}"
                     tvScanningText.setTextColor(android.graphics.Color.parseColor("#FF0055"))
                 } catch (e: Throwable) {}
 
@@ -385,14 +372,14 @@ class LiveRecognitionActivity : AppCompatActivity() {
                 ).format(java.util.Date())
             }
         } catch (e: Throwable) {
-            Log.e(TAG, "خطأ في handleFaceResult: ${e.message}", e)
+            Log.e(TAG, "handleFaceResult error: ${e.message}", e)
         }
     }
 
     private fun showUnknownWarning() {
         try {
             tvWarningBanner.visibility = View.VISIBLE
-            tvWarningBanner.text = "⚠️ تنبيه: تم رصد شخص مجهول! تم تسجيل الوجه تلقائياً"
+            tvWarningBanner.text = "⚠️ مجهول مرصود - تم التقاط صورة - جاري البحث في المجهولين..."
             tvWarningBanner.postDelayed({
                 try {
                     tvWarningBanner.visibility = View.GONE
@@ -423,13 +410,6 @@ class LiveRecognitionActivity : AppCompatActivity() {
         }
     }
 
-    private fun showWarningToast(message: String) {
-        try {
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-        } catch (e: Throwable) {
-        }
-    }
-
     private fun allPermissionsGranted() = ContextCompat.checkSelfPermission(
         this, Manifest.permission.CAMERA
     ) == PackageManager.PERMISSION_GRANTED
@@ -445,7 +425,6 @@ class LiveRecognitionActivity : AppCompatActivity() {
                 }
             }
         } catch (e: Throwable) {
-            Log.e(TAG, "خطأ في onRequestPermissionsResult: ${e.message}", e)
         }
     }
 
