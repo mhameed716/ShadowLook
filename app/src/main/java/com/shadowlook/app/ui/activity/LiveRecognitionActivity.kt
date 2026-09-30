@@ -7,6 +7,8 @@ import android.graphics.Bitmap
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -30,17 +32,17 @@ class LiveRecognitionActivity : AppCompatActivity() {
     private lateinit var previewView: androidx.camera.view.PreviewView
     private lateinit var overlayView: com.shadowlook.app.ui.view.OverlayView
     private lateinit var cyberCard: View
-    private lateinit var tvStatus: android.widget.TextView
-    private lateinit var tvName: android.widget.TextView
-    private lateinit var tvJob: android.widget.TextView
-    private lateinit var tvPhone: android.widget.TextView
-    private lateinit var tvAddress: android.widget.TextView
-    private lateinit var tvConfidence: android.widget.TextView
-    private lateinit var tvIdBadge: android.widget.TextView
-    private lateinit var ivProfile: android.widget.ImageView
+    private lateinit var tvStatus: TextView
+    private lateinit var tvName: TextView
+    private lateinit var tvJob: TextView
+    private lateinit var tvPhone: TextView
+    private lateinit var tvAddress: TextView
+    private lateinit var tvConfidence: TextView
+    private lateinit var tvIdBadge: TextView
+    private lateinit var ivProfile: ImageView
     private lateinit var layoutUnknown: View
-    private lateinit var tvUnknownTimestamp: android.widget.TextView
-    private lateinit var tvWarningBanner: android.widget.TextView
+    private lateinit var tvUnknownTimestamp: TextView
+    private lateinit var tvWarningBanner: TextView
     private lateinit var cardView: MaterialCardView
     private lateinit var statusIndicator: View
 
@@ -57,13 +59,11 @@ class LiveRecognitionActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // معالجة شاملة للأخطاء لمنع انهيار التطبيق
         try {
             setContentView(R.layout.activity_live_recognition)
-            initViews()
+            initViewsSafe()
             setupClickListeners()
 
-            // تهيئة TFLiteHelper مع معالجة أخطاء .so files
             try {
                 tfliteHelper = TFLiteHelper(this)
                 Log.d(TAG, "TFLiteHelper initialized, model ready: ${tfliteHelper?.isModelReady()}")
@@ -71,19 +71,15 @@ class LiveRecognitionActivity : AppCompatActivity() {
                     showWarningToast("وضع المحاكاة نشط - النموذج غير موجود، التطبيق سيعمل بدقة محدودة")
                 }
             } catch (e: UnsatisfiedLinkError) {
-                Log.e(TAG, "فشل تحميل مكتبات TFLite الأصلية: ${e.message}", e)
+                Log.e(TAG, "فشل تحميل مكتبات TFLite: ${e.message}", e)
                 showErrorDialog(
                     "خطأ في مكتبات الذكاء الاصطناعي",
-                    "فشل تحميل مكتبات TFLite (.so files) للمعمارية ${android.os.Build.SUPPORTED_ABIS.joinToString()}\n\nالتطبيق سيعمل في وضع المحاكاة.\n\nالتفاصيل: ${e.message}"
+                    "فشل تحميل مكتبات TFLite (.so) للمعمارية ${android.os.Build.SUPPORTED_ABIS.joinToString()}\n\nالتطبيق سيعمل في وضع المحاكاة."
                 )
-                // إنشاء helper وهمي
                 tfliteHelper = TFLiteHelper(this)
             } catch (e: Throwable) {
-                Log.e(TAG, "خطأ في تهيئة TFLiteHelper: ${e.message}", e)
-                showErrorDialog(
-                    "خطأ في تهيئة الذكاء الاصطناعي",
-                    "حدث خطأ أثناء تهيئة نموذج التعرف: ${e.message}\n\nسيتم المتابعة في وضع المحاكاة."
-                )
+                Log.e(TAG, "خطأ في TFLiteHelper: ${e.message}", e)
+                showErrorDialog("خطأ في الذكاء الاصطناعي", "حدث خطأ: ${e.message}\n\nسيتم المتابعة في وضع المحاكاة.")
                 tfliteHelper = TFLiteHelper(this)
             }
 
@@ -92,69 +88,96 @@ class LiveRecognitionActivity : AppCompatActivity() {
             if (allPermissionsGranted()) {
                 startCameraSafely()
             } else {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.CAMERA),
-                    CAMERA_PERMISSION_REQUEST
-                )
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST)
             }
 
         } catch (e: Throwable) {
             Log.e(TAG, "خطأ حرج في onCreate: ${e.message}", e)
-            showErrorDialog(
-                "خطأ في تشغيل التطبيق",
-                "حدث خطأ غير متوقع عند بدء التطبيق:\n${e.message}\n\nسيتم محاولة المتابعة."
-            )
-            // محاولة تهيئة أساسية
+            showErrorDialog("خطأ في تشغيل التطبيق", "حدث خطأ: ${e.message}")
             try {
                 setContentView(R.layout.activity_live_recognition)
-                initViews()
+                initViewsSafe()
             } catch (e2: Throwable) {
-                Log.e(TAG, "فشل حتى في التهيئة الأساسية: ${e2.message}", e2)
                 Toast.makeText(this, "فشل تشغيل التطبيق: ${e2.message}", Toast.LENGTH_LONG).show()
                 finish()
             }
         }
     }
 
-    private fun initViews() {
+    private fun initViewsSafe() {
         try {
-            previewView = findViewById(R.id.previewView)
-            overlayView = findViewById(R.id.overlayView)
-            val include = findViewById<View>(R.id.cyberCardInclude)
-            cyberCard = include
-            tvStatus = include.findViewById(R.id.tvStatus)
-            tvName = include.findViewById(R.id.tvName)
-            tvJob = include.findViewById(R.id.tvJobTitle)
-            tvPhone = include.findViewById(R.id.tvPhone)
-            tvAddress = include.findViewById(R.id.tvAddress)
-            tvConfidence = include.findViewById(R.id.tvConfidence)
-            tvIdBadge = include.findViewById(R.id.tvIdBadge)
-            ivProfile = include.findViewById(R.id.ivProfilePhoto)
-            layoutUnknown = include.findViewById(R.id.layoutUnknownAlert)
-            tvUnknownTimestamp = include.findViewById(R.id.tvUnknownTimestamp)
+            // استخدام findViewById الآمن مع فحص null
+            previewView = findViewById(R.id.previewView) ?: throw IllegalStateException("previewView not found in layout - تأكد من وجود android:id=\"@+id/previewView\" في activity_live_recognition.xml")
+            overlayView = findViewById(R.id.overlayView) ?: throw IllegalStateException("overlayView not found")
+
+            // الـ include - الجذر هو نفسه الكارد
+            val includeView = findViewById<View>(R.id.cyberCardInclude)
+                ?: throw IllegalStateException("cyberCardInclude not found - تأكد من <include android:id=\"@+id/cyberCardInclude\" layout=\"@layout/layout_cyber_profile_card\" />")
+
+            cyberCard = includeView
+
+            // إصلاح المشكلة الرئيسية: cardView هو نفسه includeView، ليس child
+            // لأن android:id في <include> يستبدل id الجذر الأصلي
+            cardView = try {
+                includeView as? MaterialCardView
+                    ?: includeView.findViewById<MaterialCardView>(R.id.cyberProfileCard)
+                    ?: throw IllegalStateException("cardView is null - includeView is ${includeView::class.java.simpleName}")
+            } catch (e: Throwable) {
+                Log.e(TAG, "خطأ في cardView: ${e.message}", e)
+                // Fallback: إنشاء كارد وهمي أو استخدام includeView كـ View
+                // نحاول البحث بطريقة أخرى
+                val fallback = findViewById<MaterialCardView>(R.id.cyberCardInclude) as? MaterialCardView
+                fallback ?: throw IllegalStateException("فشل العثور على cardView: ${e.message}")
+            }
+
+            // البحث داخل الـ include - مع فحص null لكل عنصر
+            tvStatus = includeView.findViewById(R.id.tvStatus)
+                ?: throw IllegalStateException("tvStatus not found in layout_cyber_profile_card.xml")
+            tvName = includeView.findViewById(R.id.tvName)
+                ?: throw IllegalStateException("tvName not found")
+            tvJob = includeView.findViewById(R.id.tvJobTitle)
+                ?: throw IllegalStateException("tvJobTitle not found")
+            tvPhone = includeView.findViewById(R.id.tvPhone)
+                ?: throw IllegalStateException("tvPhone not found")
+            tvAddress = includeView.findViewById(R.id.tvAddress)
+                ?: throw IllegalStateException("tvAddress not found")
+            tvConfidence = includeView.findViewById(R.id.tvConfidence)
+                ?: throw IllegalStateException("tvConfidence not found")
+            tvIdBadge = includeView.findViewById(R.id.tvIdBadge)
+                ?: throw IllegalStateException("tvIdBadge not found")
+            ivProfile = includeView.findViewById(R.id.ivProfilePhoto)
+                ?: throw IllegalStateException("ivProfilePhoto not found")
+            layoutUnknown = includeView.findViewById(R.id.layoutUnknownAlert)
+                ?: throw IllegalStateException("layoutUnknownAlert not found")
+            tvUnknownTimestamp = includeView.findViewById(R.id.tvUnknownTimestamp)
+                ?: throw IllegalStateException("tvUnknownTimestamp not found")
+            statusIndicator = includeView.findViewById(R.id.statusIndicator)
+                ?: throw IllegalStateException("statusIndicator not found")
+
             tvWarningBanner = findViewById(R.id.tvUnknownWarningBanner)
-            cardView = include.findViewById(R.id.cyberProfileCard)
-            statusIndicator = include.findViewById(R.id.statusIndicator)
+                ?: throw IllegalStateException("tvUnknownWarningBanner not found")
 
             cyberCard.visibility = View.GONE
             tvWarningBanner.visibility = View.GONE
+
+            Log.d(TAG, "✅ تم ربط جميع عناصر الواجهة بنجاح")
+
         } catch (e: Throwable) {
-            Log.e(TAG, "خطأ في initViews: ${e.message}", e)
-            throw e
+            Log.e(TAG, "❌ خطأ في initViewsSafe: ${e.message}", e)
+            throw e // إعادة رمي الخطأ ليتم التقاطه في onCreate وعرض dialog
         }
     }
 
     private fun setupClickListeners() {
         try {
-            findViewById<View>(R.id.btnOpenRegister).setOnClickListener {
+            findViewById<View>(R.id.btnOpenRegister)?.setOnClickListener {
                 try {
                     startActivity(Intent(this, RegisterFaceActivity::class.java))
                 } catch (e: Throwable) {
                     showErrorDialog("خطأ", "فشل فتح شاشة التسجيل: ${e.message}")
                 }
             }
-            findViewById<View>(R.id.btnOpenDatabase).setOnClickListener {
+            findViewById<View>(R.id.btnOpenDatabase)?.setOnClickListener {
                 try {
                     startActivity(Intent(this, DatabaseActivity::class.java))
                 } catch (e: Throwable) {
@@ -174,7 +197,7 @@ class LiveRecognitionActivity : AppCompatActivity() {
                     cameraProvider = cameraProviderFuture.get()
                     bindCameraUseCasesSafely()
                 } catch (e: Throwable) {
-                    Log.e(TAG, "خطأ في الحصول على CameraProvider: ${e.message}", e)
+                    Log.e(TAG, "خطأ في CameraProvider: ${e.message}", e)
                     showErrorDialog("خطأ في الكاميرا", "فشل تهيئة الكاميرا: ${e.message}")
                 }
             }, ContextCompat.getMainExecutor(this))
@@ -211,12 +234,19 @@ class LiveRecognitionActivity : AppCompatActivity() {
                         }
                     }
                 },
-                onUnknownFaceDetected = { bitmap, embedding ->
+                onUnknownFaceDetected = { _, _ ->
                     runOnUiThread {
                         try {
                             showUnknownWarning()
                         } catch (e: Throwable) {
-                            Log.e(TAG, "خطأ في showUnknownWarning: ${e.message}", e)
+                        }
+                    }
+                },
+                onNoFaceDetected = {
+                    runOnUiThread {
+                        try {
+                            cyberCard.visibility = View.GONE
+                        } catch (e: Throwable) {
                         }
                     }
                 }
@@ -227,17 +257,12 @@ class LiveRecognitionActivity : AppCompatActivity() {
             val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
 
             cameraProvider.unbindAll()
-            cameraProvider.bindToLifecycle(
-                this,
-                cameraSelector,
-                preview,
-                imageAnalysis
-            )
+            cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis)
             Log.d(TAG, "✅ تم ربط الكاميرا بنجاح")
 
         } catch (e: Throwable) {
             Log.e(TAG, "خطأ في bindCameraUseCasesSafely: ${e.message}", e)
-            showErrorDialog("خطأ في ربط الكاميرا", "فشل ربط حالات استخدام الكاميرا: ${e.message}\n\nتأكد من منح إذن الكاميرا.")
+            showErrorDialog("خطأ في ربط الكاميرا", "فشل ربط الكاميرا: ${e.message}")
         }
     }
 
@@ -296,7 +321,6 @@ class LiveRecognitionActivity : AppCompatActivity() {
                     try {
                         ivProfile.setImageBitmap(it)
                     } catch (e: Throwable) {
-                        Log.e(TAG, "خطأ في عرض صورة الوجه: ${e.message}")
                     }
                 }
 
@@ -322,7 +346,6 @@ class LiveRecognitionActivity : AppCompatActivity() {
                 }
             }, 3000)
         } catch (e: Throwable) {
-            Log.e(TAG, "خطأ في showUnknownWarning: ${e.message}", e)
         }
     }
 
@@ -342,7 +365,6 @@ class LiveRecognitionActivity : AppCompatActivity() {
                     .show()
             }
         } catch (e: Throwable) {
-            Log.e(TAG, "فشل حتى في عرض رسالة الخطأ: ${e.message}", e)
             Toast.makeText(this, "$title: $message", Toast.LENGTH_LONG).show()
         }
     }
@@ -358,21 +380,14 @@ class LiveRecognitionActivity : AppCompatActivity() {
         this, Manifest.permission.CAMERA
     ) == PackageManager.PERMISSION_GRANTED
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         try {
             if (requestCode == CAMERA_PERMISSION_REQUEST) {
                 if (allPermissionsGranted()) {
                     startCameraSafely()
                 } else {
-                    showErrorDialog(
-                        "إذن الكاميرا مطلوب",
-                        "التطبيق يحتاج إذن الكاميرا لعمل التعرف على الوجوه. الرجاء منح الإذن من إعدادات التطبيق."
-                    )
+                    showErrorDialog("إذن الكاميرا مطلوب", "التطبيق يحتاج إذن الكاميرا.")
                 }
             }
         } catch (e: Throwable) {
@@ -388,7 +403,6 @@ class LiveRecognitionActivity : AppCompatActivity() {
             tfliteHelper?.close()
             cameraProvider?.unbindAll()
         } catch (e: Throwable) {
-            Log.e(TAG, "خطأ في onDestroy: ${e.message}", e)
         }
     }
 }
