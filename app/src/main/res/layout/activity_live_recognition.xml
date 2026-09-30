@@ -25,90 +25,114 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Top HUD Bar -->
+    <!-- Top HUD Bar - جميع الأدوات في شريط واحد أعلى الكاميرا -->
     <LinearLayout
         android:id="@+id/topHudBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="10dp"
+        android:orientation="vertical"
         android:background="#CC0B0E14"
         app:layout_constraintTop_toTopOf="parent">
 
-        <TextView
-            android:layout_width="0dp"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:fontFamily="monospace"
-            android:text="SHADOWLOOK // LIVE_FEED"
-            android:textColor="#00F0FF"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:gravity="center_vertical" />
+            android:orientation="horizontal"
+            android:padding="8dp"
+            android:gravity="center_vertical">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnSwitchCamera"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="كاميرا"
-            android:textSize="9sp"
-            app:icon="@android:drawable/ic_menu_camera"
-            app:iconSize="14dp"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            app:strokeColor="#FFFFFF"
-            android:textColor="#FFFFFF" />
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="monospace"
+                android:text="SHADOWLOOK // LIVE"
+                android:textColor="#00F0FF"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:gravity="center_vertical"
+                android:maxLines="1" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnNightVision"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:layout_marginStart="4dp"
-            android:text="ليلي"
-            android:textSize="9sp"
-            app:icon="@android:drawable/ic_menu_view"
-            app:iconSize="14dp"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            app:strokeColor="#FFD600"
-            android:textColor="#FFD600" />
+            <!-- زر كاميرا - تبديل أمامية/خلفية -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSwitchCamera"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:text="كاميرا"
+                android:textSize="8sp"
+                app:icon="@android:drawable/ic_menu_camera"
+                app:iconSize="12dp"
+                app:iconPadding="2dp"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                app:strokeColor="#FFFFFF"
+                android:textColor="#FFFFFF"
+                app:cornerRadius="6dp" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnOpenDashboard"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:layout_marginStart="4dp"
-            android:text="إحصائيات"
-            android:textSize="9sp"
-            app:icon="@android:drawable/ic_menu_sort_by_size"
-            app:iconSize="14dp"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            app:strokeColor="#FFD600"
-            android:textColor="#FFD600" />
+            <!-- زر ليلي - رؤية ليلية -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnNightVision"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="3dp"
+                android:text="ليلي"
+                android:textSize="8sp"
+                app:icon="@android:drawable/ic_menu_view"
+                app:iconSize="12dp"
+                app:iconPadding="2dp"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                app:strokeColor="#FFD600"
+                android:textColor="#FFD600"
+                app:cornerRadius="6dp" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnOpenRegister"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:layout_marginStart="4dp"
-            android:text="تسجيل"
-            android:textSize="9sp"
-            app:icon="@android:drawable/ic_menu_add"
-            app:iconSize="14dp"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            app:strokeColor="#00F0FF"
-            android:textColor="#00F0FF" />
+            <!-- زر إحصائيات - كما كان -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnOpenDashboard"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="3dp"
+                android:text="إحصائيات"
+                android:textSize="8sp"
+                app:icon="@android:drawable/ic_menu_sort_by_size"
+                app:iconSize="12dp"
+                app:iconPadding="2dp"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                app:strokeColor="#FFD600"
+                android:textColor="#FFD600"
+                app:cornerRadius="6dp" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnOpenDatabase"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:layout_marginStart="4dp"
-            android:text="القاعدة"
-            android:textSize="9sp"
-            app:icon="@android:drawable/ic_menu_gallery"
-            app:iconSize="14dp"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            app:strokeColor="#00FF66"
-            android:textColor="#00FF66" />
+            <!-- زر تسجيل - كما كان -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnOpenRegister"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="3dp"
+                android:text="تسجيل"
+                android:textSize="8sp"
+                app:icon="@android:drawable/ic_menu_add"
+                app:iconSize="12dp"
+                app:iconPadding="2dp"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                app:strokeColor="#00F0FF"
+                android:textColor="#00F0FF"
+                app:cornerRadius="6dp" />
+
+            <!-- زر القاعدة - إعادة كما كان في النسخة السابقة -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnOpenDatabase"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="3dp"
+                android:text="القاعدة"
+                android:textSize="8sp"
+                app:icon="@android:drawable/ic_menu_gallery"
+                app:iconSize="12dp"
+                app:iconPadding="2dp"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                app:strokeColor="#00FF66"
+                android:textColor="#00FF66"
+                app:cornerRadius="6dp" />
+
+        </LinearLayout>
 
     </LinearLayout>
 
@@ -150,7 +174,7 @@
 
     </LinearLayout>
 
-    <!-- Scanning Indicator with speed -->
+    <!-- Scanning Indicator with speed - لا يؤثر على سرعة المسح -->
     <LinearLayout
         android:id="@+id/layoutScanning"
         android:layout_width="wrap_content"
@@ -162,7 +186,7 @@
         android:gravity="center_vertical"
         app:layout_constraintTop_toBottomOf="@id/topHudBar"
         app:layout_constraintStart_toStartOf="parent"
-        android:layout_margin="12dp">
+        android:layout_margin="8dp">
 
         <View
             android:layout_width="8dp"
