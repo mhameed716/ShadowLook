@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/cyberProfileCard"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="12dp"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="12dp"
+    app:strokeWidth="2dp"
+    app:strokeColor="#00F0FF">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#0B0E14"
+        android:padding="16dp">
+
+        <!-- Header Status -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <View
+                android:id="@+id/statusIndicator"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:background="@drawable/bg_status_indicator" />
+
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:fontFamily="monospace"
+                android:text="تمت المطابقة // SHADOW_ID"
+                android:textColor="#00F0FF"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                tools:text="تمت المطابقة // SHADOW_ID" />
+
+            <TextView
+                android:id="@+id/tvConfidence"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_confidence"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="2dp"
+                android:text="99.2%"
+                android:textColor="#0B0E14"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginVertical="12dp"
+            android:background="#1A2A3A" />
+
+        <!-- Profile Content -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                app:cardCornerRadius="32dp"
+                app:strokeWidth="2dp"
+                app:strokeColor="#00F0FF">
+
+                <ImageView
+                    android:id="@+id/ivProfilePhoto"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="centerCrop"
+                    android:src="@mipmap/ic_launcher" />
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="أحمد السعيد"
+                    android:textColor="#FFFFFF"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    tools:text="أحمد السعيد" />
+
+                <TextView
+                    android:id="@+id/tvJobTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="مهندس أمن سيبراني"
+                    android:textColor="#B0BEC5"
+                    android:textSize="13sp"
+                    tools:text="مهندس أمن سيبراني" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/tvPhone"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:drawableStart="@android:drawable/ic_menu_call"
+                        android:drawableTint="#00F0FF"
+                        android:drawablePadding="4dp"
+                        android:text="772123456"
+                        android:textColor="#78909C"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/tvIdBadge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="#1A2A3A"
+                        android:paddingHorizontal="6dp"
+                        android:paddingVertical="2dp"
+                        android:text="ID: 001"
+                        android:textColor="#00F0FF"
+                        android:textSize="10sp"
+                        android:fontFamily="monospace" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- Address -->
+        <TextView
+            android:id="@+id/tvAddress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="#121821"
+            android:padding="8dp"
+            android:drawableStart="@android:drawable/ic_menu_mylocation"
+            android:drawableTint="#00F0FF"
+            android:drawablePadding="6dp"
+            android:text="صنعاء - اليمن - شارع الستين"
+            android:textColor="#90A4AE"
+            android:textSize="11sp"
+            tools:text="صنعاء - اليمن" />
+
+        <!-- Unknown Alert Section - Visible only for unknowns -->
+        <LinearLayout
+            android:id="@+id/layoutUnknownAlert"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:background="#2A0A14"
+            android:padding="10dp"
+            android:layout_marginTop="12dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="⚠️ تنبيه: تم رصد شخص مجهول!"
+                android:textColor="#FF0055"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:gravity="center" />
+
+            <TextView
+                android:id="@+id/tvUnknownTimestamp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="2026-09-30 14:30:15"
+                android:textColor="#FF6B8A"
+                android:textSize="11sp"
+                android:gravity="center"
+                android:fontFamily="monospace" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="تم تسجيل الوجه تلقائياً // AUTO_CAPTURE"
+                android:textColor="#FF8FA3"
+                android:textSize="10sp"
+                android:gravity="center"
+                android:fontFamily="monospace" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

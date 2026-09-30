@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0B0E14">
+
+    <!-- Camera Preview -->
+    <androidx.camera.view.PreviewView
+        android:id="@+id/previewView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Overlay for face boxes -->
+    <com.shadowlook.app.ui.view.OverlayView
+        android:id="@+id/overlayView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Top HUD Bar -->
+    <LinearLayout
+        android:id="@+id/topHudBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:background="#800B0E14"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:fontFamily="monospace"
+            android:text="SHADOWLOOK // LIVE_FEED"
+            android:textColor="#00F0FF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOpenRegister"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="تسجيل"
+            android:textSize="11sp"
+            app:icon="@android:drawable/ic_menu_add"
+            app:iconSize="16dp"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            app:strokeColor="#00F0FF"
+            android:textColor="#00F0FF" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOpenDatabase"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:text="القاعدة"
+            android:textSize="11sp"
+            app:icon="@android:drawable/ic_menu_sort_by_size"
+            app:iconSize="16dp"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            app:strokeColor="#00FF66"
+            android:textColor="#00FF66" />
+
+    </LinearLayout>
+
+    <!-- Cyber Profile Card - Bottom -->
+    <include
+        android:id="@+id/cyberCardInclude"
+        layout="@layout/layout_cyber_profile_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:layout_constraintBottom_toBottomOf="parent"
+        android:visibility="gone" />
+
+    <!-- Scanning Indicator -->
+    <LinearLayout
+        android:id="@+id/layoutScanning"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#CC0B0E14"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="6dp"
+        android:gravity="center_vertical"
+        app:layout_constraintTop_toBottomOf="@id/topHudBar"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_margin="12dp">
+
+        <View
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:background="@drawable/bg_status_indicator" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="جاري المسح المباشر..."
+            android:textColor="#00FF66"
+            android:textSize="11sp"
+            android:fontFamily="monospace" />
+
+    </LinearLayout>
+
+    <!-- Unknown Warning Banner -->
+    <TextView
+        android:id="@+id/tvUnknownWarningBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#FF0055"
+        android:text="⚠️ تنبيه: تم رصد شخص مجهول! تم تسجيل الوجه تلقائياً"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:padding="12dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

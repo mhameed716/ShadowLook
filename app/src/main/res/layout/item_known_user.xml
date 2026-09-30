@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="8dp"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="4dp"
+    app:strokeWidth="1dp"
+    app:strokeColor="#00F0FF">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:background="#121821"
+        android:gravity="center_vertical">
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            app:cardCornerRadius="28dp"
+            app:strokeWidth="1dp"
+            app:strokeColor="#00F0FF">
+
+            <ImageView
+                android:id="@+id/ivKnownPhoto"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:src="@mipmap/ic_launcher" />
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvKnownName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="أحمد السعيد"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/tvKnownJob"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="مهندس أمن سيبراني"
+                android:textColor="#00F0FF"
+                android:textSize="12sp"
+                android:layout_marginTop="2dp" />
+
+            <TextView
+                android:id="@+id/tvKnownPhone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="772123456"
+                android:textColor="#78909C"
+                android:textSize="11sp"
+                android:drawableStart="@android:drawable/ic_menu_call"
+                android:drawableTint="#00F0FF"
+                android:drawablePadding="4dp"
+                android:layout_marginTop="4dp" />
+
+            <TextView
+                android:id="@+id/tvKnownAddress"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="صنعاء - اليمن"
+                android:textColor="#607D8B"
+                android:textSize="10sp"
+                android:layout_marginTop="2dp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/tvKnownId"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ID: 001"
+                android:textColor="#00F0FF"
+                android:fontFamily="monospace"
+                android:textSize="9sp"
+                android:background="#1A2A3A"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:layout_marginTop="4dp" />
+
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDeleteKnown"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="حذف الملف"
+            android:textSize="10sp"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            app:strokeColor="#FF0055"
+            android:textColor="#FF0055"
+            app:icon="@android:drawable/ic_menu_delete"
+            app:iconSize="14dp"
+            app:iconTint="#FF0055" />
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

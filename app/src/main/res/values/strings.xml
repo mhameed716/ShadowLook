@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_name">ShadowLook</string>
+    <string name="tagline">AI-Powered Face Recognition</string>
+    <!-- Arabic HUD -->
+    <string name="hud_live_feed">SHADOWLOOK // LIVE_FEED</string>
+    <string name="hud_match">تمت المطابقة // SHADOW_ID</string>
+    <string name="hud_unknown_alert">تنبيه: تم رصد شخص مجهول!</string>
+    <string name="hud_unknown_sub">شخص غير معرف</string>
+    <string name="hud_auto_capture">تم تسجيل الوجه تلقائياً // AUTO_CAPTURE</string>
+    <string name="hud_scanning">جاري المسح المباشر...</string>
+    <string name="btn_register">تسجيل</string>
+    <string name="btn_database">القاعدة</string>
+    <string name="btn_capture_enroll">تسجيل البيانات // CAPTURE &amp; ENROLL</string>
+    <string name="tab_known">الأشخاص المسجلون</string>
+    <string name="tab_unknown">المجهولون المرصودون</string>
+    <string name="toolbar_shadow_db">قاعدة البيانات السريّة // SHADOW_DB</string>
+    <string name="search_hint">بحث بالاسم أو رقم الهاتف...</string>
+    <string name="delete_profile">حذف الملف</string>
+    <string name="delete_log">مسح السجل</string>
+    <string name="confirm_delete_known">هل أنت متأكد من حذف هذا الملف؟</string>
+    <string name="confirm_delete_unknown">هل تريد مسح هذا السجل؟</string>
+    <string name="toast_enrolled">✅ تم التسجيل بنجاح!</string>
+    <string name="toast_no_face">لم يتم كشف أي وجه! اقترب أكثر</string>
+</resources>
