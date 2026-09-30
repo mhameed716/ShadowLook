@@ -444,6 +444,27 @@ class LiveRecognitionActivity : AppCompatActivity() {
         }
     }
 
+    private fun showWarningToast(message: String) {
+        try {
+            runOnUiThread {
+                try {
+                    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                    // أيضاً عرض في banner
+                    tvWarningBanner.visibility = View.VISIBLE
+                    tvWarningBanner.text = message
+                    tvWarningBanner.postDelayed({
+                        try {
+                            tvWarningBanner.visibility = View.GONE
+                        } catch (e: Throwable) {}
+                    }, 2500)
+                } catch (e: Throwable) {
+                    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: Throwable) {
+        }
+    }
+
     private fun showUnknownWarning() {
         try {
             tvWarningBanner.visibility = View.VISIBLE
