@@ -53,5 +53,13 @@
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:label="قاعدة البيانات السريّة" />
 
+        <!-- الشاشة 4: لوحة التحكم والإحصائيات -->
+        <activity
+            android:name=".ui.activity.DashboardActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:label="لوحة التحكم" />
+
     </application>
 </manifest>

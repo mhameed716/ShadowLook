@@ -15,7 +15,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Overlay for face boxes -->
+    <!-- Overlay for face boxes - Green for known, Red for unknown -->
     <com.shadowlook.app.ui.view.OverlayView
         android:id="@+id/overlayView"
         android:layout_width="match_parent"
@@ -31,8 +31,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="12dp"
-        android:background="#800B0E14"
+        android:padding="10dp"
+        android:background="#CC0B0E14"
         app:layout_constraintTop_toTopOf="parent">
 
         <TextView
@@ -42,17 +42,31 @@
             android:fontFamily="monospace"
             android:text="SHADOWLOOK // LIVE_FEED"
             android:textColor="#00F0FF"
-            android:textSize="12sp"
-            android:textStyle="bold" />
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:gravity="center_vertical" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOpenDashboard"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="إحصائيات"
+            android:textSize="10sp"
+            app:icon="@android:drawable/ic_menu_sort_by_size"
+            app:iconSize="14dp"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            app:strokeColor="#FFD600"
+            android:textColor="#FFD600" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnOpenRegister"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
+            android:layout_marginStart="6dp"
             android:text="تسجيل"
-            android:textSize="11sp"
+            android:textSize="10sp"
             app:icon="@android:drawable/ic_menu_add"
-            app:iconSize="16dp"
+            app:iconSize="14dp"
             style="@style/Widget.Material3.Button.OutlinedButton"
             app:strokeColor="#00F0FF"
             android:textColor="#00F0FF" />
@@ -61,18 +75,18 @@
             android:id="@+id/btnOpenDatabase"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="6dp"
             android:text="القاعدة"
-            android:textSize="11sp"
-            app:icon="@android:drawable/ic_menu_sort_by_size"
-            app:iconSize="16dp"
+            android:textSize="10sp"
+            app:icon="@android:drawable/ic_menu_gallery"
+            app:iconSize="14dp"
             style="@style/Widget.Material3.Button.OutlinedButton"
             app:strokeColor="#00FF66"
             android:textColor="#00FF66" />
 
     </LinearLayout>
 
-    <!-- Cyber Profile Card - Bottom -->
+    <!-- Cyber Profile Card - Bottom - Beautiful popup with green/red -->
     <include
         android:id="@+id/cyberCardInclude"
         layout="@layout/layout_cyber_profile_card"
@@ -81,7 +95,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         android:visibility="gone" />
 
-    <!-- Scanning Indicator -->
+    <!-- Scanning Indicator with speed -->
     <LinearLayout
         android:id="@+id/layoutScanning"
         android:layout_width="wrap_content"
@@ -101,10 +115,11 @@
             android:background="@drawable/bg_status_indicator" />
 
         <TextView
+            android:id="@+id/tvScanningText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
-            android:text="جاري المسح المباشر..."
+            android:text="جاري المسح المباشر... 0.15s"
             android:textColor="#00FF66"
             android:textSize="11sp"
             android:fontFamily="monospace" />

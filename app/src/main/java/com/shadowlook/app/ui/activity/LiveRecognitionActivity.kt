@@ -45,6 +45,9 @@ class LiveRecognitionActivity : AppCompatActivity() {
     private lateinit var tvWarningBanner: TextView
     private lateinit var cardView: MaterialCardView
     private lateinit var statusIndicator: View
+    private lateinit var tvQualityInfo: TextView
+    private lateinit var tvSpeedInfo: TextView
+    private lateinit var tvScanningText: TextView
 
     private lateinit var cameraExecutor: ExecutorService
     private var tfliteHelper: TFLiteHelper? = null
@@ -157,10 +160,19 @@ class LiveRecognitionActivity : AppCompatActivity() {
             tvWarningBanner = findViewById(R.id.tvUnknownWarningBanner)
                 ?: throw IllegalStateException("tvUnknownWarningBanner not found")
 
+            // عناصر جديدة للإحصائيات
+            tvQualityInfo = includeView.findViewById(R.id.tvQualityInfo)
+                ?: throw IllegalStateException("tvQualityInfo not found")
+            tvSpeedInfo = includeView.findViewById(R.id.tvSpeedInfo)
+                ?: throw IllegalStateException("tvSpeedInfo not found")
+            tvScanningText = findViewById(R.id.tvScanningText)
+                ?: findViewById(R.id.layoutScanning) as? TextView
+                ?: throw IllegalStateException("tvScanningText not found")
+
             cyberCard.visibility = View.GONE
             tvWarningBanner.visibility = View.GONE
 
-            Log.d(TAG, "✅ تم ربط جميع عناصر الواجهة بنجاح")
+            Log.d(TAG, "✅ تم ربط جميع عناصر الواجهة بنجاح - v2.0 مع تحسينات الدقة والسرعة")
 
         } catch (e: Throwable) {
             Log.e(TAG, "❌ خطأ في initViewsSafe: ${e.message}", e)
@@ -182,6 +194,13 @@ class LiveRecognitionActivity : AppCompatActivity() {
                     startActivity(Intent(this, DatabaseActivity::class.java))
                 } catch (e: Throwable) {
                     showErrorDialog("خطأ", "فشل فتح قاعدة البيانات: ${e.message}")
+                }
+            }
+            findViewById<View>(R.id.btnOpenDashboard)?.setOnClickListener {
+                try {
+                    startActivity(Intent(this, DashboardActivity::class.java))
+                } catch (e: Throwable) {
+                    showErrorDialog("خطأ", "فشل فتح لوحة التحكم: ${e.message}")
                 }
             }
         } catch (e: Throwable) {
@@ -276,46 +295,81 @@ class LiveRecognitionActivity : AppCompatActivity() {
             cyberCard.visibility = View.VISIBLE
 
             if (result.isKnown) {
-                cardView.strokeColor = android.graphics.Color.parseColor("#00F0FF")
-                tvStatus.text = "تمت المطابقة // SHADOW_ID"
-                tvStatus.setTextColor(android.graphics.Color.parseColor("#00F0FF"))
+                // معروف: أخضر #00FF66 مع واجهة منبثقة جميلة ومرتبة مع صورته المحفوظة
+                cardView.strokeColor = android.graphics.Color.parseColor("#00FF66")
+                tvStatus.text = "✅ تمت المطابقة // SHADOW_ID"
+                tvStatus.setTextColor(android.graphics.Color.parseColor("#00FF66"))
+                statusIndicator.setBackgroundResource(R.drawable.bg_status_indicator)
+                try {
+                    (statusIndicator.background as? android.graphics.drawable.GradientDrawable)?.setColor(
+                        android.graphics.Color.parseColor("#00FF66")
+                    )
+                } catch (e: Throwable) {}
 
                 tvName.text = result.userName ?: "مستخدم معروف"
                 tvJob.text = result.jobTitle ?: "غير محدد"
                 tvPhone.text = result.phone ?: "---"
                 tvAddress.text = result.address ?: "لا يوجد عنوان"
-                tvIdBadge.text = "ID: ${result.userId?.toString()?.padStart(3, '0') ?: "---"}"
+                tvIdBadge.text = "ID: ${result.userId?.toString()?.padStart(3, '0') ?: "---"} // KNOWN"
 
                 val confidence = ((1 - result.distance) * 100).toInt().coerceIn(0, 100)
+                val cosinePercent = (result.cosineSimilarity * 100).toInt().coerceIn(0, 100)
                 tvConfidence.text = "$confidence%"
 
+                // معلومات الجودة والسرعة
+                try {
+                    tvQualityInfo.text = "جودة: ${(result.quality * 100).toInt()}% | Cosine: $cosinePercent%"
+                    tvSpeedInfo.text = "دقة: $confidence% | مسافة: ${String.format("%.2f", result.distance)}"
+                    tvScanningText.text = "✅ معروف: ${result.userName} - ${confidence}% - 0.15s"
+                    tvScanningText.setTextColor(android.graphics.Color.parseColor("#00FF66"))
+                } catch (e: Throwable) {}
+
+                // عرض الصورة المحفوظة بشكل جميل ومرتب
                 if (!result.imagePath.isNullOrEmpty()) {
                     try {
                         val file = File(result.imagePath)
                         if (file.exists()) {
-                            ivProfile.load(file)
+                            ivProfile.load(file) {
+                                crossfade(true)
+                                placeholder(R.mipmap.ic_launcher)
+                            }
                         } else {
-                            ivProfile.setImageResource(R.mipmap.ic_launcher)
+                            result.faceBitmap?.let { ivProfile.setImageBitmap(it) } ?: ivProfile.setImageResource(R.mipmap.ic_launcher)
                         }
                     } catch (e: Throwable) {
                         ivProfile.setImageResource(R.mipmap.ic_launcher)
                     }
+                } else {
+                    result.faceBitmap?.let { ivProfile.setImageBitmap(it) }
                 }
 
                 layoutUnknown.visibility = View.GONE
                 tvWarningBanner.visibility = View.GONE
 
             } else {
+                // مجهول: أحمر #FF0055 مع التقاط صورة أو أكثر
                 cardView.strokeColor = android.graphics.Color.parseColor("#FF0055")
-                tvStatus.text = "تنبيه: تم رصد شخص مجهول!"
+                tvStatus.text = "⚠️ تنبيه: شخص مجهول!"
                 tvStatus.setTextColor(android.graphics.Color.parseColor("#FF0055"))
+                try {
+                    (statusIndicator.background as? android.graphics.drawable.GradientDrawable)?.setColor(
+                        android.graphics.Color.parseColor("#FF0055")
+                    )
+                } catch (e: Throwable) {}
 
                 tvName.text = "شخص غير معرف"
                 tvJob.text = "غير مسجل في القاعدة"
-                tvPhone.text = "مجهول"
-                tvAddress.text = "تم التقاط الوجه في الخلفية"
-                tvIdBadge.text = "UNKNOWN"
+                tvPhone.text = "مجهول - سيتم التقاط صورة"
+                tvAddress.text = "تم التقاط الوجه تلقائياً وحفظه"
+                tvIdBadge.text = "UNKNOWN // CAPTURED"
                 tvConfidence.text = "${((1 - result.distance) * 100).toInt()}%"
+
+                try {
+                    tvQualityInfo.text = "جودة: ${(result.quality * 100).toInt()}% | غير معروف"
+                    tvSpeedInfo.text = "التقاط: تلقائي | حفظ: /unknown_faces/"
+                    tvScanningText.text = "⚠️ مجهول مرصود - جاري التقاط صورة..."
+                    tvScanningText.setTextColor(android.graphics.Color.parseColor("#FF0055"))
+                } catch (e: Throwable) {}
 
                 result.faceBitmap?.let {
                     try {

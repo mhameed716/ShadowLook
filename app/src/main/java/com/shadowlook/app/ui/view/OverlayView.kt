@@ -7,6 +7,11 @@ import android.util.Log
 import android.view.View
 import com.shadowlook.app.ml.FaceAnalyzer
 
+/**
+ * ShadowLook v2.0 - Improved Box Design
+ * - Known: Green #00FF66 with glow + beautiful popup
+ * - Unknown: Red #FF0055 with warning + auto capture
+ */
 class OverlayView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -20,15 +25,16 @@ class OverlayView @JvmOverloads constructor(
     private var imageWidth: Int = 0
     private var imageHeight: Int = 0
 
+    // ألوان جديدة حسب الطلب
+    private val neonGreen = Color.parseColor("#00FF66") // للمعروفين - أخضر
+    private val neonRed = Color.parseColor("#FF0055")   // للمجهولين - أحمر
     private val neonCyan = Color.parseColor("#00F0FF")
-    private val neonRed = Color.parseColor("#FF0055")
-    private val neonGreen = Color.parseColor("#00FF66")
     private val darkBg = Color.parseColor("#0B0E14")
 
     private val knownBoxPaint = Paint().apply {
-        color = neonCyan
+        color = neonGreen
         style = Paint.Style.STROKE
-        strokeWidth = 4f
+        strokeWidth = 5f
         isAntiAlias = true
     }
 
@@ -41,7 +47,7 @@ class OverlayView @JvmOverloads constructor(
 
     private val cornerPaint = Paint().apply {
         style = Paint.Style.STROKE
-        strokeWidth = 6f
+        strokeWidth = 7f
         isAntiAlias = true
         strokeCap = Paint.Cap.ROUND
     }
@@ -53,9 +59,16 @@ class OverlayView @JvmOverloads constructor(
 
     private val textPaint = Paint().apply {
         color = Color.WHITE
-        textSize = 32f
+        textSize = 34f
         isAntiAlias = true
         typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+    }
+
+    private val smallTextPaint = Paint().apply {
+        color = Color.WHITE
+        textSize = 22f
+        isAntiAlias = true
+        typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
     }
 
     fun setResults(results: List<FaceAnalyzer.FaceRecognitionResult>) {
@@ -110,9 +123,9 @@ class OverlayView @JvmOverloads constructor(
                     val rect = RectF(left, top, right, bottom)
 
                     if (result.isKnown) {
-                        drawKnownFace(canvas, rect, result)
+                        drawKnownFaceGreen(canvas, rect, result)
                     } else {
-                        drawUnknownFace(canvas, rect, result)
+                        drawUnknownFaceRed(canvas, rect, result)
                     }
                 } catch (e: Throwable) {
                     Log.e("OverlayView", "خطأ في رسم وجه: ${e.message}", e)
@@ -123,120 +136,186 @@ class OverlayView @JvmOverloads constructor(
         }
     }
 
-    private fun drawKnownFace(canvas: Canvas, rect: RectF, result: FaceAnalyzer.FaceRecognitionResult) {
+    /**
+     * معروف: مربع أخضر #00FF66 مع توهج أخضر + بيانات جميلة
+     */
+    private fun drawKnownFaceGreen(canvas: Canvas, rect: RectF, result: FaceAnalyzer.FaceRecognitionResult) {
         try {
-            knownBoxPaint.color = neonCyan
-            canvas.drawRoundRect(rect, 16f, 16f, knownBoxPaint)
+            // مربع أخضر للمعروفين
+            knownBoxPaint.color = neonGreen
+            canvas.drawRoundRect(rect, 18f, 18f, knownBoxPaint)
 
-            cornerPaint.color = neonCyan
-            drawCorners(canvas, rect, cornerPaint)
+            // زوايا خضراء سميكة
+            cornerPaint.color = neonGreen
+            drawCornersEnhanced(canvas, rect, cornerPaint)
 
+            // خلفية النص - أخضر
             val label = result.userName ?: "معروف"
             val confidence = ((1 - result.distance) * 100).toInt().coerceIn(0, 100)
+            val qualityText = "جودة: ${(result.quality * 100).toInt()}%"
             val text = "$label • $confidence%"
 
             val textWidth = textPaint.measureText(text)
-            val textHeight = 50f
+            val textHeight = 52f
             val textBgRect = RectF(
                 rect.left,
-                (rect.top - textHeight - 10).coerceAtLeast(0f),
-                rect.left + textWidth + 32,
-                rect.top - 10
+                (rect.top - textHeight - 12).coerceAtLeast(0f),
+                rect.left + textWidth + 36,
+                rect.top - 12
             )
 
             if (textBgRect.top >= 0) {
-                textBackgroundPaint.color = neonCyan
-                textBackgroundPaint.alpha = 230
-                canvas.drawRoundRect(textBgRect, 8f, 8f, textBackgroundPaint)
+                textBackgroundPaint.color = neonGreen
+                textBackgroundPaint.alpha = 240
+                canvas.drawRoundRect(textBgRect, 10f, 10f, textBackgroundPaint)
 
                 textPaint.color = darkBg
-                canvas.drawText(text, textBgRect.left + 16, textBgRect.bottom - 12, textPaint)
+                canvas.drawText(text, textBgRect.left + 18, textBgRect.bottom - 14, textPaint)
+
+                // جودة صغيرة تحت
+                if (result.quality < 1f) {
+                    smallTextPaint.color = darkBg
+                    smallTextPaint.alpha = 180
+                    canvas.drawText(qualityText, textBgRect.left + 18, textBgRect.top - 6, smallTextPaint)
+                }
             }
 
+            // مؤشر حالة أخضر نابض
             val statusPaint = Paint().apply {
                 color = neonGreen
                 style = Paint.Style.FILL
             }
-            canvas.drawCircle(rect.right - 20, rect.top + 20, 10f, statusPaint)
-
-            val glowPaint = Paint().apply {
-                color = neonCyan
+            canvas.drawCircle(rect.right - 22, rect.top + 22, 12f, statusPaint)
+            
+            // حلقة خارجية نابضة
+            val pulsePaint = Paint().apply {
+                color = neonGreen
                 style = Paint.Style.STROKE
-                strokeWidth = 12f
-                alpha = 30
+                strokeWidth = 3f
+                alpha = 100
+            }
+            canvas.drawCircle(rect.right - 22, rect.top + 22, 18f, pulsePaint)
+
+            // توهج أخضر خارجي جميل
+            val glowPaint = Paint().apply {
+                color = neonGreen
+                style = Paint.Style.STROKE
+                strokeWidth = 16f
+                alpha = 35
                 isAntiAlias = true
             }
-            canvas.drawRoundRect(rect, 16f, 16f, glowPaint)
+            canvas.drawRoundRect(rect, 18f, 18f, glowPaint)
+
+            // خط إضافي داخلي
+            val innerGlowPaint = Paint().apply {
+                color = neonGreen
+                style = Paint.Style.STROKE
+                strokeWidth = 2f
+                alpha = 80
+            }
+            val innerRect = RectF(rect.left + 4, rect.top + 4, rect.right - 4, rect.bottom - 4)
+            canvas.drawRoundRect(innerRect, 14f, 14f, innerGlowPaint)
+
         } catch (e: Throwable) {
-            Log.e("OverlayView", "خطأ في drawKnownFace: ${e.message}", e)
+            Log.e("OverlayView", "خطأ في drawKnownFaceGreen: ${e.message}", e)
         }
     }
 
-    private fun drawUnknownFace(canvas: Canvas, rect: RectF, result: FaceAnalyzer.FaceRecognitionResult) {
+    /**
+     * مجهول: مربع أحمر #FF0055 مع تحذير وخطوط قطرية
+     */
+    private fun drawUnknownFaceRed(canvas: Canvas, rect: RectF, result: FaceAnalyzer.FaceRecognitionResult) {
         try {
             unknownBoxPaint.color = neonRed
-            canvas.drawRoundRect(rect, 16f, 16f, unknownBoxPaint)
+            canvas.drawRoundRect(rect, 18f, 18f, unknownBoxPaint)
 
             cornerPaint.color = neonRed
-            drawCorners(canvas, rect, cornerPaint)
+            drawCornersEnhanced(canvas, rect, cornerPaint)
 
-            val warningText = "⚠️ مجهول!"
+            val warningText = "⚠️ مجهول! ${((1 - result.distance) * 100).toInt()}%"
             val textWidth = textPaint.measureText(warningText)
-            val textHeight = 50f
+            val textHeight = 52f
             val textBgRect = RectF(
                 rect.left,
-                (rect.top - textHeight - 10).coerceAtLeast(0f),
-                rect.left + textWidth + 32,
-                rect.top - 10
+                (rect.top - textHeight - 12).coerceAtLeast(0f),
+                rect.left + textWidth + 36,
+                rect.top - 12
             )
 
             if (textBgRect.top >= 0) {
                 textBackgroundPaint.color = neonRed
-                textBackgroundPaint.alpha = 230
-                canvas.drawRoundRect(textBgRect, 8f, 8f, textBackgroundPaint)
+                textBackgroundPaint.alpha = 240
+                canvas.drawRoundRect(textBgRect, 10f, 10f, textBackgroundPaint)
 
                 textPaint.color = Color.WHITE
-                canvas.drawText(warningText, textBgRect.left + 16, textBgRect.bottom - 12, textPaint)
+                canvas.drawText(warningText, textBgRect.left + 18, textBgRect.bottom - 14, textPaint)
             }
 
+            // خطوط تحذير قطرية حمراء
             val warningLinePaint = Paint().apply {
                 color = neonRed
                 style = Paint.Style.STROKE
-                strokeWidth = 2f
-                alpha = 100
-                pathEffect = DashPathEffect(floatArrayOf(10f, 10f), 0f)
+                strokeWidth = 2.5f
+                alpha = 120
+                pathEffect = DashPathEffect(floatArrayOf(12f, 8f), 0f)
             }
             canvas.drawLine(rect.left, rect.top, rect.right, rect.bottom, warningLinePaint)
             canvas.drawLine(rect.right, rect.top, rect.left, rect.bottom, warningLinePaint)
 
+            // توهج أحمر
             val glowPaint = Paint().apply {
                 color = neonRed
                 style = Paint.Style.STROKE
-                strokeWidth = 14f
-                alpha = 40
+                strokeWidth = 18f
+                alpha = 45
                 isAntiAlias = true
             }
-            canvas.drawRoundRect(rect, 16f, 16f, glowPaint)
+            canvas.drawRoundRect(rect, 18f, 18f, glowPaint)
+
+            // أيقونة كاميرا صغيرة تشير إلى الالتقاط التلقائي
+            val camPaint = Paint().apply {
+                color = neonRed
+                style = Paint.Style.FILL
+                alpha = 200
+            }
+            canvas.drawCircle(rect.left + 20, rect.bottom - 20, 8f, camPaint)
+
         } catch (e: Throwable) {
-            Log.e("OverlayView", "خطأ في drawUnknownFace: ${e.message}", e)
+            Log.e("OverlayView", "خطأ في drawUnknownFaceRed: ${e.message}", e)
         }
     }
 
-    private fun drawCorners(canvas: Canvas, rect: RectF, paint: Paint) {
+    private fun drawCornersEnhanced(canvas: Canvas, rect: RectF, paint: Paint) {
         try {
-            val cornerLength = 30f
+            val cornerLength = 36f
+            val cornerThickness = paint.strokeWidth
 
+            // Top-left - زاوية سميكة
             canvas.drawLine(rect.left, rect.top, rect.left + cornerLength, rect.top, paint)
             canvas.drawLine(rect.left, rect.top, rect.left, rect.top + cornerLength, paint)
 
+            // Top-right
             canvas.drawLine(rect.right - cornerLength, rect.top, rect.right, rect.top, paint)
             canvas.drawLine(rect.right, rect.top, rect.right, rect.top + cornerLength, paint)
 
+            // Bottom-left
             canvas.drawLine(rect.left, rect.bottom - cornerLength, rect.left, rect.bottom, paint)
             canvas.drawLine(rect.left, rect.bottom, rect.left + cornerLength, rect.bottom, paint)
 
+            // Bottom-right
             canvas.drawLine(rect.right - cornerLength, rect.bottom, rect.right, rect.bottom, paint)
             canvas.drawLine(rect.right, rect.bottom - cornerLength, rect.right, rect.bottom, paint)
+
+            // نقاط إضافية في الزوايا لجمال أكثر
+            val dotPaint = Paint().apply {
+                color = paint.color
+                style = Paint.Style.FILL
+            }
+            canvas.drawCircle(rect.left, rect.top, 5f, dotPaint)
+            canvas.drawCircle(rect.right, rect.top, 5f, dotPaint)
+            canvas.drawCircle(rect.left, rect.bottom, 5f, dotPaint)
+            canvas.drawCircle(rect.right, rect.bottom, 5f, dotPaint)
+
         } catch (e: Throwable) {
         }
     }
