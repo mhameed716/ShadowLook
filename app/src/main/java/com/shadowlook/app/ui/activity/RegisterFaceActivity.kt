@@ -146,6 +146,7 @@ class RegisterFaceActivity : AppCompatActivity() {
                                             com.shadowlook.app.ml.FaceAnalyzer.FaceRecognitionResult(
                                                 face = face,
                                                 boundingBox = face.boundingBox,
+                                                trackingId = try { face.trackingId } catch (e: Throwable) { null },
                                                 userId = null,
                                                 userName = "وجه مكتشف",
                                                 jobTitle = null,
@@ -153,8 +154,14 @@ class RegisterFaceActivity : AppCompatActivity() {
                                                 address = null,
                                                 imagePath = null,
                                                 distance = 0f,
+                                                cosineSimilarity = 0f,
+                                                similarityPercent = 95f,
+                                                quality = 0.9f,
                                                 isKnown = true,
-                                                faceBitmap = null
+                                                faceBitmap = null,
+                                                headEulerX = 0f,
+                                                headEulerY = 0f,
+                                                headEulerZ = 0f
                                             )
                                         }
                                         runOnUiThread {
