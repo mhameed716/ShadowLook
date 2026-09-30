@@ -284,47 +284,41 @@ class RegisterFaceActivity : AppCompatActivity() {
 
     private suspend fun saveUser(faceBitmap: Bitmap, name: String, phone: String, job: String, address: String) = withContext(Dispatchers.IO) {
         try {
-            val helper = tfliteHelper ?: TFLiteHelper(this@RegisterFaceActivity)
-            val embedding = helper.getFaceEmbedding(faceBitmap)
-            val embeddingJson = Converters.embeddingToJson(embedding)
+            // === Pipeline الكامل المطلوب ===
+            // 1. إضافة الملف: mobilefacenet.tflite في assets/ - يتم في TFLiteHelper
+            // 2. الكشف الأولي: تم في captureAndEnroll - ML Kit كشف الوجه وقص المنطقة فقط
+            // 3. التجهيز: 112x112 + Normalization - يتم في TFLiteHelper.getFaceEmbedding
+            // 4. التمرير: Inference للحصول على Embedding - يتم في TFLiteHelper
+            // 5. المقارنة أو الحفظ: حفظ البصمة في قاعدة البيانات - هنا
 
-            val knownDir = File(this@RegisterFaceActivity.filesDir, "known_faces")
-            if (!knownDir.exists()) knownDir.mkdirs()
+            val pipeline = com.shadowlook.app.ml.FaceRecognitionPipeline(this@RegisterFaceActivity)
+            
+            // التحقق من وجود النموذج (الخطوة 1)
+            val modelExists = pipeline.checkModelExists()
+            Log.d("RegisterFace", "الخطوة 1: فحص النموذج - موجود: $modelExists")
 
-            val fileName = "known_${System.currentTimeMillis()}.jpg"
-            val imageFile = File(knownDir, fileName)
-            FileOutputStream(imageFile).use { out ->
-                faceBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
-            }
+            // الخطوة 3+4: Pre-processing + Inference -> Embedding
+            val embedding = pipeline.getEmbedding(faceBitmap)
+            Log.d("RegisterFace", "الخطوة 3+4: تم الحصول على Embedding - الحجم: ${embedding.size}")
 
-            val entity = UserFaceEntity(
-                name = name,
-                phone = phone,
-                jobTitle = job,
-                address = address,
-                imagePath = imageFile.absolutePath,
-                vectorEmbedding = embeddingJson
-            )
-
-            val db = AppDatabase.getDatabase(this@RegisterFaceActivity)
-            db.userFaceDao().insertKnown(entity)
-
+            // الخطوة 5: الحفظ - حفظ البصمة في قاعدة البيانات عند التسجيل
+            val id = pipeline.saveNewFace(name, phone, job, address, faceBitmap, embedding)
+            
             withContext(Dispatchers.Main) {
-                Toast.makeText(
-                    this@RegisterFaceActivity,
-                    "✅ تم تسجيل $name بنجاح! // ENROLLED",
-                    Toast.LENGTH_LONG
-                ).show()
-                etName.text?.clear()
-                etPhone.text?.clear()
-                etJob.text?.clear()
-                etAddress.text?.clear()
+                if (id > 0) {
+                    Toast.makeText(this@RegisterFaceActivity, "✅ تم تسجيل $name بنجاح - ID: $id - ${if (modelExists) "نموذج حقيقي" else "وضع محاكاة"}", Toast.LENGTH_LONG).show()
+                    finish()
+                } else {
+                    Toast.makeText(this@RegisterFaceActivity, "فشل الحفظ", Toast.LENGTH_SHORT).show()
+                }
             }
+
+            pipeline.close()
 
         } catch (e: Throwable) {
             Log.e("RegisterFace", "خطأ في saveUser: ${e.message}", e)
             withContext(Dispatchers.Main) {
-                Toast.makeText(this@RegisterFaceActivity, "❌ فشل الحفظ: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@RegisterFaceActivity, "فشل التسجيل: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }

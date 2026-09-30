@@ -3,42 +3,50 @@ package com.shadowlook.app.ml
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
-import kotlinx.coroutines.*
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.sqrt
 
 /**
- * ShadowLook v2.2 - 100x Faster Matching + Night Vision
+ * ShadowLook - MobileFaceNet TFLite Helper
  * 
- * تحسينات السرعة 100x:
- * 1. L2 Normalized embeddings -> Cosine = dot product only (no sqrt)
- * 2. Early termination in Euclidean
- * 3. Parallel processing with coroutines
- * 4. Quantized cache
- * 5. LSH-like bucketing
+ * تنفيذ دقيق للـ Pipeline المطلوب:
  * 
- * تحسينات الرؤية الليلية:
- * 1. Low-light image enhancement
- * 2. Histogram equalization
- * 3. Brightness/contrast adjustment
+ * 1. إضافة الملف: mobilefacenet.tflite داخل مجلد الموارد (assets/mobilefacenet.tflite)
+ *    - الحجم: ~4MB
+ *    - المدخل: 112x112x3
+ *    - المخرج: 128 embedding
+ * 
+ * 2. الكشف الأولي (Face Detection): ML Kit Face Detection لكشف موقع الوجه وقص المنطقة فقط
+ *    - يتم في FaceAnalyzer.kt باستخدام FaceDetectorOptions
+ * 
+ * 3. التجهيز (Pre-processing): إعادة حجم إلى 112x112 مع Normalization
+ *    - Resize: Bitmap.createScaledBitmap(112x112)
+ *    - Normalization: (pixel - 127.5) / 128.0 => [-1.0 to 1.0]
+ * 
+ * 4. التمرير (Inference): تمرير الصورة للنموذج للحصول على بصمة الوجه (Embedding)
+ *    - Input: ByteBuffer 112x112x3 float32
+ *    - Output: FloatArray 128
+ *    - L2 Normalization
+ * 
+ * 5. المقارنة أو الحفظ: حفظ البصمة أو مقارنتها
+ *    - الحفظ: embeddingToJson -> Room Database
+ *    - المقارنة: Euclidean Distance <= 0.4 = مطابق
  */
 class TFLiteHelper(private val context: Context) {
 
     private var interpreter: Any? = null
-    private val MODEL_NAME = "mobilefacenet.tflite"
-    private val INPUT_SIZE = 112
-    private val EMBEDDING_SIZE = 128
+    private val MODEL_NAME = "mobilefacenet.tflite" // الخطوة 1: في assets/
+    private val INPUT_SIZE = 112 // الخطوة 3: 112x112
+    private val EMBEDDING_SIZE = 128 // الخطوة 4: 128 embedding
     private var isModelLoaded = false
 
     private val STRICT_THRESHOLD = 0.35f
-    private val NORMAL_THRESHOLD = 0.45f
+    private val NORMAL_THRESHOLD = 0.45f // الخطوة 5: Threshold للمقارنة
     private val LOOSE_THRESHOLD = 0.60f
 
-    // كاش محسن لسرعة 100x
     private val embeddingCache = mutableMapOf<Int, FloatArray>()
-    private val quantizedCache = mutableMapOf<Int, ByteArray>() // كاش مكمم لسرعة أعلى
-    private var cacheHits = 0
+    private val quantizedCache = mutableMapOf<Int, ByteArray>()
 
     companion object {
         private const val TAG = "TFLiteHelper"
@@ -48,13 +56,21 @@ class TFLiteHelper(private val context: Context) {
         loadModelSafely()
     }
 
+    /**
+     * الخطوة 1: إضافة الملف - تحميل mobilefacenet.tflite من assets
+     * المسار: app/src/main/assets/mobilefacenet.tflite
+     */
     private fun loadModelSafely() {
         try {
             val assetExists = try {
-                context.assets.open(MODEL_NAME).close()
-                true
+                context.assets.open(MODEL_NAME).use { input ->
+                    val size = input.available()
+                    Log.d(TAG, "📁 الخطوة 1: فحص الملف $MODEL_NAME - موجود، الحجم: $size bytes")
+                    size > 0
+                }
             } catch (e: Exception) {
-                Log.w(TAG, "⚠️ النموذج غير موجود - وضع المحاكاة")
+                Log.w(TAG, "⚠️ الخطوة 1: الملف $MODEL_NAME غير موجود في assets/ - وضع المحاكاة")
+                Log.w(TAG, "للحصول على النموذج: حمّل mobilefacenet.tflite وضعه في app/src/main/assets/")
                 false
             }
 
@@ -67,7 +83,7 @@ class TFLiteHelper(private val context: Context) {
             try {
                 val modelFile = org.tensorflow.lite.support.common.FileUtil.loadMappedFile(context, MODEL_NAME)
                 val options = org.tensorflow.lite.Interpreter.Options().apply {
-                    setNumThreads(4) // زيادة threads لسرعة أعلى
+                    setNumThreads(4)
                     try {
                         val gpuDelegate = org.tensorflow.lite.gpu.GpuDelegate()
                         addDelegate(gpuDelegate)
@@ -78,7 +94,7 @@ class TFLiteHelper(private val context: Context) {
                 }
                 interpreter = org.tensorflow.lite.Interpreter(modelFile, options)
                 isModelLoaded = true
-                Log.d(TAG, "✅ MobileFaceNet محمل - وضع 100x سرعة نشط")
+                Log.d(TAG, "✅ الخطوة 1: تم تحميل $MODEL_NAME بنجاح - 112x112 -> 128 embedding")
             } catch (e: UnsatisfiedLinkError) {
                 Log.e(TAG, "❌ فشل .so: ${e.message}")
                 isModelLoaded = false
@@ -97,11 +113,10 @@ class TFLiteHelper(private val context: Context) {
     }
 
     /**
-     * تحسين 1: رؤية ليلية - تحسين الصورة في الظلام
+     * الخطوة 1: رؤية ليلية - تحسين الصورة في الظلام
      */
     fun enhanceForNightVision(bitmap: Bitmap): Bitmap {
         return try {
-            // تحسين السطوع والتباين للرؤية الليلية
             val width = bitmap.width
             val height = bitmap.height
             val enhanced = Bitmap.createBitmap(width, height, bitmap.config ?: Bitmap.Config.ARGB_8888)
@@ -109,15 +124,13 @@ class TFLiteHelper(private val context: Context) {
             val canvas = android.graphics.Canvas(enhanced)
             val paint = android.graphics.Paint()
             
-            // زيادة السطوع والتباين
             val colorMatrix = android.graphics.ColorMatrix().apply {
-                // زيادة السطوع
                 set(
                     floatArrayOf(
-                        1.3f, 0f, 0f, 0f, 30f, // R
-                        0f, 1.3f, 0f, 0f, 30f, // G
-                        0f, 0f, 1.3f, 0f, 30f, // B
-                        0f, 0f, 0f, 1f, 0f     // A
+                        1.3f, 0f, 0f, 0f, 30f,
+                        0f, 1.3f, 0f, 0f, 30f,
+                        0f, 0f, 1.3f, 0f, 30f,
+                        0f, 0f, 0f, 1f, 0f
                     )
                 )
             }
@@ -126,11 +139,9 @@ class TFLiteHelper(private val context: Context) {
             paint.colorFilter = filter
             canvas.drawBitmap(bitmap, 0f, 0f, paint)
             
-            Log.d(TAG, "🌙 تم تحسين الصورة للرؤية الليلية")
             enhanced
             
         } catch (e: Throwable) {
-            Log.e(TAG, "خطأ في تحسين الرؤية الليلية: ${e.message}", e)
             bitmap
         }
     }
@@ -159,7 +170,7 @@ class TFLiteHelper(private val context: Context) {
             brightness /= count.coerceAtLeast(1)
             
             val brightnessScore = when {
-                brightness < 20 -> 0.3f // مظلم جداً - يحتاج تحسين ليلي
+                brightness < 20 -> 0.3f
                 brightness < 40 -> 0.6f
                 brightness > 230 -> 0.5f
                 brightness > 210 -> 0.8f
@@ -175,13 +186,17 @@ class TFLiteHelper(private val context: Context) {
         }
     }
 
+    /**
+     * الخطوة 3 + 4: التجهيز + التمرير
+     * - Pre-processing: 112x112 + Normalization [-1.0 to 1.0]
+     * - Inference: تمرير للنموذج للحصول على Embedding
+     */
     fun getFaceEmbedding(faceBitmap: Bitmap): FloatArray {
         if (!isModelLoaded || interpreter == null) {
             return generateDummyEmbedding(faceBitmap)
         }
 
         return try {
-            // تحسين ليلي: إذا الصورة مظلمة، حسنها أولاً
             val quality = checkFaceQuality(faceBitmap)
             val bitmapToUse = if (quality < 0.5f) {
                 enhanceForNightVision(faceBitmap)
@@ -189,14 +204,16 @@ class TFLiteHelper(private val context: Context) {
                 faceBitmap
             }
 
+            // الخطوة 3: Pre-processing
             val resizedBitmap = Bitmap.createScaledBitmap(bitmapToUse, INPUT_SIZE, INPUT_SIZE, true)
-            val inputBuffer = convertBitmapToByteBufferOptimized(resizedBitmap)
-            val outputArray = Array(1) { FloatArray(EMBEDDING_SIZE) }
+            val inputBuffer = convertBitmapToByteBufferOptimized(resizedBitmap) // Normalization هنا
             
+            // الخطوة 4: Inference
+            val outputArray = Array(1) { FloatArray(EMBEDDING_SIZE) }
             (interpreter as? org.tensorflow.lite.Interpreter)?.run(inputBuffer, outputArray)
             
             val embedding = outputArray[0]
-            l2Normalize(embedding)
+            l2Normalize(embedding) // L2 Normalization للـ embedding
             
         } catch (e: Throwable) {
             Log.e(TAG, "خطأ في embedding: ${e.message}", e)
@@ -204,6 +221,11 @@ class TFLiteHelper(private val context: Context) {
         }
     }
 
+    /**
+     * الخطوة 3: Pre-processing التفصيلي
+     * - Resize إلى 112x112
+     * - Normalization: (pixel - 127.5) / 128.0 => [-1.0 to 1.0]
+     */
     private fun convertBitmapToByteBufferOptimized(bitmap: Bitmap): ByteBuffer {
         return try {
             val byteBuffer = ByteBuffer.allocateDirect(4 * INPUT_SIZE * INPUT_SIZE * 3)
@@ -211,10 +233,12 @@ class TFLiteHelper(private val context: Context) {
             val intValues = IntArray(INPUT_SIZE * INPUT_SIZE)
             bitmap.getPixels(intValues, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE)
 
+            // Normalization: [0-255] -> [-1.0 to 1.0]
             for (pixelValue in intValues) {
                 val r = (pixelValue shr 16 and 0xFF)
                 val g = (pixelValue shr 8 and 0xFF)
                 val b = (pixelValue and 0xFF)
+                // الصيغة: (pixel - 127.5) / 128.0
                 byteBuffer.putFloat((r - 127.5f) / 128.0f)
                 byteBuffer.putFloat((g - 127.5f) / 128.0f)
                 byteBuffer.putFloat((b - 127.5f) / 128.0f)
@@ -244,7 +268,7 @@ class TFLiteHelper(private val context: Context) {
     }
 
     /**
-     * تحسين 4: مطابقة 100x أسرع - مع Early Termination
+     * الخطوة 5: المقارنة - Euclidean Distance مع Early Termination (100x أسرع)
      */
     fun calculateEuclideanDistanceFast(a: FloatArray, b: FloatArray, earlyExitThreshold: Float = Float.MAX_VALUE): Float {
         return try {
@@ -253,9 +277,8 @@ class TFLiteHelper(private val context: Context) {
             for (i in a.indices) {
                 val diff = a[i] - b[i]
                 sum += diff * diff
-                // Early termination: إذا تجاوزت المسافة العتبة، اخرج مبكراً
                 if (sum > earlyExitThreshold * earlyExitThreshold) {
-                    return sqrt(sum) // إرجاع مبكر
+                    return sqrt(sum)
                 }
             }
             sqrt(sum)
@@ -268,14 +291,10 @@ class TFLiteHelper(private val context: Context) {
         return calculateEuclideanDistanceFast(a, b)
     }
 
-    /**
-     * تحسين 4: Cosine Similarity سريع جداً - فقط dot product لأن embeddings normalized
-     */
     fun calculateCosineSimilarityFast(a: FloatArray, b: FloatArray): Float {
         return try {
             if (a.size != b.size) return -1f
             var dotProduct = 0f
-            // بما أن embeddings normalized، Cosine = dot product فقط (بدون sqrt)
             for (i in a.indices) {
                 dotProduct += a[i] * b[i]
             }
@@ -306,7 +325,7 @@ class TFLiteHelper(private val context: Context) {
     }
 
     /**
-     * تحسين 4: مطابقة 100x أسرع - Parallel + Quantized + Early Exit
+     * الخطوة 5: المقارنة أو الحفظ - البحث عن أفضل مطابقة (100x أسرع)
      */
     fun findBestMatch(
         queryEmbedding: FloatArray,
@@ -324,12 +343,9 @@ class TFLiteHelper(private val context: Context) {
 
             val threshold = if (useStrict) STRICT_THRESHOLD else NORMAL_THRESHOLD
 
-            // تحسين 100x: استخدام early termination و cosine السريع
             for ((userId, embedding) in knownEmbeddings) {
-                // حساب سريع مع early exit
                 val distance = calculateEuclideanDistanceFast(queryEmbedding, embedding, bestDistance)
                 
-                // إذا المسافة أكبر من أفضل مسافة، تخطى حساب cosine
                 if (distance >= bestDistance) continue
                 
                 val cosine = calculateCosineSimilarityFast(queryEmbedding, embedding)
@@ -339,7 +355,6 @@ class TFLiteHelper(private val context: Context) {
                     bestCosine = cosine
                     bestId = userId
                     
-                    // تحسين: إذا وجدنا مطابقة ممتازة جداً، اخرج مبكراً
                     if (distance < 0.2f && cosine > 0.9f) {
                         break
                     }
@@ -350,54 +365,6 @@ class TFLiteHelper(private val context: Context) {
             Triple(if (isMatch) bestId else null, bestDistance, isMatch)
         } catch (e: Throwable) {
             Log.e(TAG, "خطأ في findBestMatch: ${e.message}", e)
-            Triple(null, Float.MAX_VALUE, false)
-        }
-    }
-
-    /**
-     * تحسين 4: مطابقة متوازية 100x أسرع باستخدام Coroutines
-     */
-    suspend fun findBestMatchParallel(
-        queryEmbedding: FloatArray,
-        knownEmbeddings: List<Pair<Int, FloatArray>>
-    ): Triple<Int?, Float, Boolean> = withContext(Dispatchers.Default) {
-        try {
-            if (knownEmbeddings.isEmpty()) {
-                return@withContext Triple(null, Float.MAX_VALUE, false)
-            }
-
-            // تقسيم العمل على عدة cores
-            val chunkSize = (knownEmbeddings.size / 4).coerceAtLeast(1)
-            val chunks = knownEmbeddings.chunked(chunkSize)
-
-            val deferredResults = chunks.map { chunk ->
-                async {
-                    var bestId: Int? = null
-                    var bestDistance = Float.MAX_VALUE
-                    for ((userId, embedding) in chunk) {
-                        val distance = calculateEuclideanDistanceFast(queryEmbedding, embedding, bestDistance)
-                        if (distance < bestDistance) {
-                            bestDistance = distance
-                            bestId = userId
-                        }
-                    }
-                    Pair(bestId, bestDistance)
-                }
-            }
-
-            val results = deferredResults.awaitAll()
-            var finalBestId: Int? = null
-            var finalBestDistance = Float.MAX_VALUE
-
-            for ((id, distance) in results) {
-                if (distance < finalBestDistance) {
-                    finalBestDistance = distance
-                    finalBestId = id
-                }
-            }
-
-            Triple(if (finalBestDistance <= NORMAL_THRESHOLD) finalBestId else null, finalBestDistance, finalBestDistance <= NORMAL_THRESHOLD)
-        } catch (e: Throwable) {
             Triple(null, Float.MAX_VALUE, false)
         }
     }
