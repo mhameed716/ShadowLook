@@ -171,14 +171,17 @@ class UnknownFacesFragment : Fragment() {
                                 val db = AppDatabase.getDatabase(requireContext())
                                 db.userFaceDao().insertKnown(knownEntity)
 
-                                // حذف من المجهولين بعد التحويل (اختياري)
+                                // تحسين: لا نحذف المجهول بعد التحويل - نحتفظ به كنسخة احتياطية
+                                // فقط ننسخ الصورة، لا نحذف الأصل - للحفاظ على قاعدة البيانات
                                 try {
-                                    db.unknownFaceDao().deleteUnknown(entity)
-                                    File(entity.imagePath).takeIf { it.exists() }?.delete()
+                                    // لا نحذف - نحتفظ بالمجهول الأصلي
+                                    // db.unknownFaceDao().deleteUnknown(entity)
+                                    // File(entity.imagePath).takeIf { it.exists() }?.delete()
+                                    Log.d(TAG, "تم الاحتفاظ بالمجهول الأصلي بعد التحويل")
                                 } catch (e: Throwable) {
                                 }
 
-                                Toast.makeText(requireContext(), "✅ تم تحويل ${entity.formattedDate} إلى معروف: $name", Toast.LENGTH_LONG).show()
+                                Toast.makeText(requireContext(), "✅ تم تحويل ${entity.formattedDate} إلى معروف: $name - تم الاحتفاظ بالنسخة الأصلية في المجهولين", Toast.LENGTH_LONG).show()
 
                             } catch (e: Throwable) {
                                 Log.e(TAG, "فشل التحويل: ${e.message}", e)

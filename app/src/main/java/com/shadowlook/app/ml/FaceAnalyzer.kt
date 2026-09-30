@@ -22,6 +22,13 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
+/**
+ * ShadowLook v2.5 - استراتيجية جديدة: التقاط أولاً ثم البحث
+ * 1. أول ما يظهر وجه على الشاشة → يلتقط له صورة فوراً
+ * 2. ثم يبحث عنها في قاعدة بيانات الوجوه المعروفة
+ * 3. إذا لم يجدها → يضيفها إلى الوجوه غير المعروفة تلقائياً مع تاريخ
+ * + جميع الميزات السابقة: رؤية ليلية، كاميرتين، 100x أسرع، 3D، تتبع، 3م
+ */
 class FaceAnalyzer(
     private val context: Context,
     private val overlayView: OverlayView,
@@ -50,11 +57,10 @@ class FaceAnalyzer(
                 .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
                 .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
                 .enableTracking()
-                .setMinFaceSize(0.05f)
+                .setMinFaceSize(0.05f) // 3م+
                 .build()
             FaceDetection.getClient(options)
         } catch (e: Throwable) {
-            Log.e(TAG, "فشل إنشاء detector: ${e.message}", e)
             val options = FaceDetectorOptions.Builder()
                 .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
                 .setMinFaceSize(0.05f)
@@ -73,7 +79,7 @@ class FaceAnalyzer(
 
     fun setNightVisionMode(enabled: Boolean) {
         isNightVisionMode = enabled
-        Log.d(TAG, "🌙 Night Vision Mode: $enabled")
+        Log.d(TAG, "🌙 Night Vision: $enabled")
     }
 
     data class FaceRecognitionResult(
@@ -115,7 +121,7 @@ class FaceAnalyzer(
                 .addOnSuccessListener { faces ->
                     try {
                         if (faces.isNotEmpty()) {
-                            processFaces(faces, mediaImage, imageProxy)
+                            processFacesNewStrategy(faces, mediaImage, imageProxy)
                         } else {
                             try {
                                 overlayView.setResults(emptyList())
@@ -123,11 +129,10 @@ class FaceAnalyzer(
                             } catch (e: Throwable) {}
                         }
                     } catch (e: Throwable) {
-                        Log.e(TAG, "خطأ في معالجة النتائج: ${e.message}", e)
+                        Log.e(TAG, "خطأ: ${e.message}", e)
                     }
                 }
                 .addOnFailureListener { e ->
-                    Log.e(TAG, "فشل كشف الوجه: ${e.message}", e)
                     try {
                         overlayView.setResults(emptyList())
                     } catch (e2: Throwable) {}
@@ -138,14 +143,19 @@ class FaceAnalyzer(
                     } catch (e: Throwable) {}
                 }
         } catch (e: Throwable) {
-            Log.e(TAG, "خطأ في analyze: ${e.message}", e)
             try {
                 imageProxy.close()
             } catch (e2: Throwable) {}
         }
     }
 
-    private fun processFaces(faces: List<Face>, mediaImage: Image, imageProxy: ImageProxy) {
+    /**
+     * استراتيجية جديدة v2.5:
+     * 1. أول ما يظهر وجه → التقاط صورة فوراً
+     * 2. ثم البحث في قاعدة المعروفين
+     * 3. إذا لم يوجد → إضافة إلى المجهولين مع تاريخ تلقائي
+     */
+    private fun processFacesNewStrategy(faces: List<Face>, mediaImage: Image, imageProxy: ImageProxy) {
         scope.launch {
             try {
                 updateCachesIfNeeded()
@@ -156,7 +166,7 @@ class FaceAnalyzer(
                     return@launch
                 } ?: return@launch
 
-                // تحسين 1: تحسين الرؤية الليلية للصورة الكاملة إذا الوضع الليلي مفعل
+                // تحسين ليلي للصورة الكاملة
                 val enhancedFullBitmap = if (isNightVisionMode) {
                     try {
                         tfliteHelper.enhanceForNightVision(fullBitmap)
@@ -172,40 +182,38 @@ class FaceAnalyzer(
                 for (face in faces) {
                     try {
                         val boundingBox = face.boundingBox
-                        var faceBitmap = cropFaceSafe(enhancedFullBitmap, boundingBox) ?: continue
-
-                        // تحسين 1: تحسين الرؤية الليلية للوجه المقصوص
+                        
+                        // === الخطوة 1: التقاط صورة الوجه فوراً أول ما يظهر ===
+                        var capturedFaceBitmap = cropFaceSafe(enhancedFullBitmap, boundingBox) ?: continue
+                        
+                        // تحسين ليلي للوجه الملتقط
                         val qualityCheck = try {
-                            tfliteHelper.checkFaceQuality(faceBitmap)
+                            tfliteHelper.checkFaceQuality(capturedFaceBitmap)
                         } catch (e: Throwable) {
                             1f
                         }
 
-                        // إذا الصورة مظلمة جداً أو وضع ليلي مفعل، حسنها
                         if (isNightVisionMode || qualityCheck < 0.5f) {
                             try {
-                                faceBitmap = tfliteHelper.enhanceForNightVision(faceBitmap)
+                                capturedFaceBitmap = tfliteHelper.enhanceForNightVision(capturedFaceBitmap)
                             } catch (e: Throwable) {}
                         }
 
                         if (qualityCheck < 0.20f && !isNightVisionMode) continue
 
-                        // تحسين 4: 100x أسرع - embedding مع كاش
+                        // حفظ نسخة من الصورة الملتقطة للاستخدام في حالة المجهول
+                        val capturedBitmapForUnknown = capturedFaceBitmap.copy(capturedFaceBitmap.config ?: Bitmap.Config.ARGB_8888, false)
+
+                        // === الخطوة 2: البحث في قاعدة بيانات الوجوه المعروفة ===
                         val embedding = try {
-                            tfliteHelper.getFaceEmbedding(faceBitmap)
+                            tfliteHelper.getFaceEmbedding(capturedFaceBitmap)
                         } catch (e: Throwable) {
                             FloatArray(128) { 0f }
                         }
 
-                        // تحسين 4: مطابقة 100x أسرع - استخدام النسخة السريعة مع early termination
+                        // مطابقة 100x أسرع
                         val (matchedId, distance, isMatch) = try {
-                            // إذا عدد الوجوه كبير، استخدم الطريقة المتوازية
-                            if (knownEmbeddingsCache.size > 50) {
-                                // للكاش الكبير، نستخدم الطريقة العادية السريعة مع early exit
-                                tfliteHelper.findBestMatch(embedding, knownEmbeddingsCache)
-                            } else {
-                                tfliteHelper.findBestMatch(embedding, knownEmbeddingsCache)
-                            }
+                            tfliteHelper.findBestMatch(embedding, knownEmbeddingsCache)
                         } catch (e: Throwable) {
                             Triple(null, Float.MAX_VALUE, false)
                         }
@@ -238,6 +246,7 @@ class FaceAnalyzer(
                         val trackingId = try { face.trackingId } catch (e: Throwable) { null }
 
                         if (isMatch && matchedId != null) {
+                            // === معروف: وجد في قاعدة المعروفين ===
                             val userEntity = getUserById(matchedId)
                             val result = FaceRecognitionResult(
                                 face = face,
@@ -254,7 +263,7 @@ class FaceAnalyzer(
                                 similarityPercent = similarityPercent,
                                 quality = qualityCheck,
                                 isKnown = true,
-                                faceBitmap = faceBitmap,
+                                faceBitmap = capturedFaceBitmap,
                                 headEulerX = headX,
                                 headEulerY = headY,
                                 headEulerZ = headZ,
@@ -268,7 +277,9 @@ class FaceAnalyzer(
                                     onFaceRecognized(result)
                                 } catch (e: Throwable) {}
                             }
+                            Log.d(TAG, "✅ معروف: ${userEntity?.name} - ${similarityPercent.toInt()}% - تم التقاط صورة أولاً ثم البحث")
                         } else {
+                            // === مجهول: لم يوجد في قاعدة المعروفين → إضافة إلى المجهولين ===
                             val currentTime = System.currentTimeMillis()
                             val timeSinceLastCapture = currentTime - lastUnknownCaptureTime
 
@@ -287,7 +298,7 @@ class FaceAnalyzer(
                                 similarityPercent = similarityPercent,
                                 quality = qualityCheck,
                                 isKnown = false,
-                                faceBitmap = faceBitmap,
+                                faceBitmap = capturedFaceBitmap,
                                 headEulerX = headX,
                                 headEulerY = headY,
                                 headEulerZ = headZ,
@@ -303,35 +314,41 @@ class FaceAnalyzer(
                                 } catch (e: Throwable) {}
                             }
 
+                            // البحث في المجهولين المشابهين
                             val similarUnknowns = try {
                                 findSimilarUnknownsFast(embedding)
                             } catch (e: Throwable) {
                                 emptyList()
                             }
 
+                            // === الخطوة 3: إذا مجهول، أضف إلى قاعدة المجهولين مع تاريخ تلقائي ===
                             if (timeSinceLastCapture >= UNKNOWN_CAPTURE_COOLDOWN_MS) {
                                 lastUnknownCaptureTime = currentTime
                                 launch {
                                     try {
-                                        saveUnknownFace(faceBitmap, embedding)
+                                        // حفظ الصورة الملتقطة فوراً مع تاريخ تلقائي
+                                        saveUnknownFace(capturedBitmapForUnknown, embedding)
                                         updateUnknownCache()
-                                    } catch (e: Throwable) {}
+                                        Log.d(TAG, "📸 مجهول: تم التقاط صورة أولاً ثم البحث - لم يوجد في المعروفين → أضيف إلى المجهولين مع تاريخ ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}")
+                                    } catch (e: Throwable) {
+                                        Log.e(TAG, "فشل حفظ المجهول: ${e.message}", e)
+                                    }
                                 }
                                 withContext(Dispatchers.Main) {
                                     try {
-                                        onUnknownFaceDetected(faceBitmap, embedding, similarUnknowns)
+                                        onUnknownFaceDetected(capturedBitmapForUnknown, embedding, similarUnknowns)
                                     } catch (e: Throwable) {}
                                 }
                             } else {
                                 withContext(Dispatchers.Main) {
                                     try {
-                                        onUnknownFaceDetected(faceBitmap, embedding, similarUnknowns)
+                                        onUnknownFaceDetected(capturedBitmapForUnknown, embedding, similarUnknowns)
                                     } catch (e: Throwable) {}
                                 }
                             }
                         }
                     } catch (e: Throwable) {
-                        Log.e(TAG, "خطأ في وجه واحد: ${e.message}", e)
+                        Log.e(TAG, "خطأ في وجه: ${e.message}", e)
                     }
                 }
 
@@ -342,7 +359,7 @@ class FaceAnalyzer(
                 }
 
             } catch (e: Throwable) {
-                Log.e(TAG, "خطأ في processFaces: ${e.message}", e)
+                Log.e(TAG, "خطأ: ${e.message}", e)
             }
         }
     }
@@ -365,10 +382,10 @@ class FaceAnalyzer(
                 updateUnknownCache()
                 
                 lastCacheUpdateTime = currentTime
-                Log.d(TAG, "كاش محدث: معروف=${knownEmbeddingsCache.size}, مجهول=${unknownEmbeddingsCache.size}")
+                Log.d(TAG, "كاش: معروف=${knownEmbeddingsCache.size}, مجهول=${unknownEmbeddingsCache.size}")
             }
         } catch (e: Throwable) {
-            Log.e(TAG, "خطأ في تحديث الكاش: ${e.message}", e)
+            Log.e(TAG, "خطأ كاش: ${e.message}", e)
         }
     }
 
@@ -384,9 +401,7 @@ class FaceAnalyzer(
                     null
                 }
             }
-        } catch (e: Throwable) {
-            Log.e(TAG, "خطأ في تحديث كاش المجهولين: ${e.message}", e)
-        }
+        } catch (e: Throwable) {}
     }
 
     private fun findSimilarUnknownsFast(queryEmbedding: FloatArray): List<UnknownSimilarity> {
@@ -395,15 +410,14 @@ class FaceAnalyzer(
             
             for ((entity, embedding) in unknownEmbeddingsCache) {
                 try {
-                    // 100x أسرع: استخدام fast methods مع early exit
                     val distance = tfliteHelper.calculateEuclideanDistanceFast(queryEmbedding, embedding, 0.6f)
-                    if (distance > 0.6f) continue // تخطي مبكر
+                    if (distance > 0.6f) continue
                     
                     val similarity = ((1 - (distance / 0.6f).coerceIn(0f, 1f)) * 100).coerceIn(0f, 100f)
                     
                     if (similarity > 60f) {
                         similarities.add(UnknownSimilarity(entity, similarity, distance))
-                        if (similarities.size >= 10) break // توقف مبكر إذا وجدنا 10
+                        if (similarities.size >= 10) break
                     }
                 } catch (e: Throwable) {}
             }
@@ -438,9 +452,10 @@ class FaceAnalyzer(
             }
 
             val embeddingJson = Converters.embeddingToJson(embedding)
+            val formattedDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
             val unknownEntity = UnknownFaceEntity(
                 timestamp = timestamp,
-                formattedDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(timestamp)),
+                formattedDate = formattedDate,
                 imagePath = imageFile.absolutePath,
                 vectorEmbedding = embeddingJson
             )
@@ -448,7 +463,7 @@ class FaceAnalyzer(
             val db = AppDatabase.getDatabase(context)
             db.unknownFaceDao().insertUnknown(unknownEntity)
 
-            Log.d(TAG, "✅ حفظ مجهول: $fileName")
+            Log.d(TAG, "✅ حفظ مجهول مع تاريخ تلقائي: $fileName - $formattedDate")
 
         } catch (e: Throwable) {
             Log.e(TAG, "❌ فشل حفظ المجهول: ${e.message}", e)
