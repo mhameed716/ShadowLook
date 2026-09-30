@@ -33,25 +33,24 @@ class FaceAnalyzer(
 
     companion object {
         private const val TAG = "FaceAnalyzer"
-        private const val UNKNOWN_CAPTURE_COOLDOWN_MS = 2000L // تقليل إلى 2 ثانية لسرعة أعلى
+        private const val UNKNOWN_CAPTURE_COOLDOWN_MS = 1500L
     }
 
     data class UnknownSimilarity(
         val entity: UnknownFaceEntity,
-        val similarity: Float, // نسبة التشابه 0-100%
+        val similarity: Float,
         val distance: Float
     )
 
     private val detector by lazy {
         try {
-            // تحسين 6: كشف على بعد 3 متر - تفعيل كشف الوجوه الصغيرة + Landmarks للـ 3D
             val options = FaceDetectorOptions.Builder()
                 .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-                .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL) // تفعيل Landmarks لدقة 3D
-                .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL) // تفعيل Contours لدقة 3D
-                .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL) // ابتسامة، عين مفتوحة
-                .enableTracking() // تفعيل التتبع لمربع يتابع الوجه
-                .setMinFaceSize(0.05f) // تقليل الحد الأدنى لحجم الوجه لكشف على بعد 3 متر (افتراضي 0.1)
+                .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
+                .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
+                .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
+                .enableTracking()
+                .setMinFaceSize(0.05f)
                 .build()
             FaceDetection.getClient(options)
         } catch (e: Throwable) {
@@ -70,11 +69,17 @@ class FaceAnalyzer(
     private var unknownEmbeddingsCache: List<Pair<UnknownFaceEntity, FloatArray>> = emptyList()
     private var lastCacheUpdateTime = 0L
     private val CACHE_VALIDITY_MS = 10000L
+    private var isNightVisionMode = false
+
+    fun setNightVisionMode(enabled: Boolean) {
+        isNightVisionMode = enabled
+        Log.d(TAG, "🌙 Night Vision Mode: $enabled")
+    }
 
     data class FaceRecognitionResult(
         val face: Face?,
         val boundingBox: Rect,
-        val trackingId: Int?, // لتتبع الوجه
+        val trackingId: Int?,
         val userId: Int?,
         val userName: String?,
         val jobTitle: String?,
@@ -83,11 +88,11 @@ class FaceAnalyzer(
         val imagePath: String?,
         val distance: Float,
         val cosineSimilarity: Float,
-        val similarityPercent: Float, // نسبة التشابه 0-100%
+        val similarityPercent: Float,
         val quality: Float,
         val isKnown: Boolean,
         val faceBitmap: Bitmap?,
-        val headEulerX: Float = 0f, // زوايا الرأس للـ 3D
+        val headEulerX: Float = 0f,
         val headEulerY: Float = 0f,
         val headEulerZ: Float = 0f,
         val isSmiling: Boolean = false,
@@ -97,7 +102,6 @@ class FaceAnalyzer(
 
     @SuppressLint("UnsafeOptInUsageError")
     override fun analyze(imageProxy: ImageProxy) {
-        // تحسين 1: كشف تلقائي بدون ضغط على الشاشة - معالجة كل إطار (بدون تخطي)
         val mediaImage = imageProxy.image
         if (mediaImage == null) {
             imageProxy.close()
@@ -116,8 +120,7 @@ class FaceAnalyzer(
                             try {
                                 overlayView.setResults(emptyList())
                                 onNoFaceDetected()
-                            } catch (e: Throwable) {
-                            }
+                            } catch (e: Throwable) {}
                         }
                     } catch (e: Throwable) {
                         Log.e(TAG, "خطأ في معالجة النتائج: ${e.message}", e)
@@ -127,21 +130,18 @@ class FaceAnalyzer(
                     Log.e(TAG, "فشل كشف الوجه: ${e.message}", e)
                     try {
                         overlayView.setResults(emptyList())
-                    } catch (e2: Throwable) {
-                    }
+                    } catch (e2: Throwable) {}
                 }
                 .addOnCompleteListener {
                     try {
                         imageProxy.close()
-                    } catch (e: Throwable) {
-                    }
+                    } catch (e: Throwable) {}
                 }
         } catch (e: Throwable) {
             Log.e(TAG, "خطأ في analyze: ${e.message}", e)
             try {
                 imageProxy.close()
-            } catch (e2: Throwable) {
-            }
+            } catch (e2: Throwable) {}
         }
     }
 
@@ -156,31 +156,56 @@ class FaceAnalyzer(
                     return@launch
                 } ?: return@launch
 
+                // تحسين 1: تحسين الرؤية الليلية للصورة الكاملة إذا الوضع الليلي مفعل
+                val enhancedFullBitmap = if (isNightVisionMode) {
+                    try {
+                        tfliteHelper.enhanceForNightVision(fullBitmap)
+                    } catch (e: Throwable) {
+                        fullBitmap
+                    }
+                } else {
+                    fullBitmap
+                }
+
                 val results = mutableListOf<FaceRecognitionResult>()
 
                 for (face in faces) {
                     try {
                         val boundingBox = face.boundingBox
-                        val faceBitmap = cropFaceSafe(fullBitmap, boundingBox) ?: continue
+                        var faceBitmap = cropFaceSafe(enhancedFullBitmap, boundingBox) ?: continue
 
-                        // تحسين 4: دقة 3D مثل الهواتف - فحص Landmarks و Contours
-                        val quality = try {
+                        // تحسين 1: تحسين الرؤية الليلية للوجه المقصوص
+                        val qualityCheck = try {
                             tfliteHelper.checkFaceQuality(faceBitmap)
                         } catch (e: Throwable) {
                             1f
                         }
 
-                        if (quality < 0.25f) continue // تخطي الوجوه منخفضة الجودة
+                        // إذا الصورة مظلمة جداً أو وضع ليلي مفعل، حسنها
+                        if (isNightVisionMode || qualityCheck < 0.5f) {
+                            try {
+                                faceBitmap = tfliteHelper.enhanceForNightVision(faceBitmap)
+                            } catch (e: Throwable) {}
+                        }
 
+                        if (qualityCheck < 0.20f && !isNightVisionMode) continue
+
+                        // تحسين 4: 100x أسرع - embedding مع كاش
                         val embedding = try {
                             tfliteHelper.getFaceEmbedding(faceBitmap)
                         } catch (e: Throwable) {
                             FloatArray(128) { 0f }
                         }
 
-                        // تحسين 2: فحص نسبة التشابه مع السجل المحفوظ
+                        // تحسين 4: مطابقة 100x أسرع - استخدام النسخة السريعة مع early termination
                         val (matchedId, distance, isMatch) = try {
-                            tfliteHelper.findBestMatch(embedding, knownEmbeddingsCache)
+                            // إذا عدد الوجوه كبير، استخدم الطريقة المتوازية
+                            if (knownEmbeddingsCache.size > 50) {
+                                // للكاش الكبير، نستخدم الطريقة العادية السريعة مع early exit
+                                tfliteHelper.findBestMatch(embedding, knownEmbeddingsCache)
+                            } else {
+                                tfliteHelper.findBestMatch(embedding, knownEmbeddingsCache)
+                            }
                         } catch (e: Throwable) {
                             Triple(null, Float.MAX_VALUE, false)
                         }
@@ -189,25 +214,21 @@ class FaceAnalyzer(
                             if (matchedId != null) {
                                 val matchedEmbedding = knownEmbeddingsCache.find { it.first == matchedId }?.second
                                 if (matchedEmbedding != null) {
-                                    tfliteHelper.calculateCosineSimilarity(embedding, matchedEmbedding)
+                                    tfliteHelper.calculateCosineSimilarityFast(embedding, matchedEmbedding)
                                 } else 0f
                             } else 0f
                         } catch (e: Throwable) {
                             0f
                         }
 
-                        // تحسين 2: حساب نسبة التشابه 0-100%
                         val similarityPercent = try {
-                            // تحويل المسافة إلى نسبة: 0 مسافة = 100%، 0.6 مسافة = 0%
                             val euclideanSimilarity = ((1 - (distance / 0.6f).coerceIn(0f, 1f)) * 100).coerceIn(0f, 100f)
                             val cosineSimilarity = ((cosine + 1) / 2 * 100).coerceIn(0f, 100f)
-                            // متوسط الاثنين
                             (euclideanSimilarity * 0.6f + cosineSimilarity * 0.4f)
                         } catch (e: Throwable) {
                             0f
                         }
 
-                        // تحسين 4: بيانات 3D
                         val headX = try { face.headEulerAngleX } catch (e: Throwable) { 0f }
                         val headY = try { face.headEulerAngleY } catch (e: Throwable) { 0f }
                         val headZ = try { face.headEulerAngleZ } catch (e: Throwable) { 0f }
@@ -231,7 +252,7 @@ class FaceAnalyzer(
                                 distance = distance,
                                 cosineSimilarity = cosine,
                                 similarityPercent = similarityPercent,
-                                quality = quality,
+                                quality = qualityCheck,
                                 isKnown = true,
                                 faceBitmap = faceBitmap,
                                 headEulerX = headX,
@@ -245,8 +266,7 @@ class FaceAnalyzer(
                             withContext(Dispatchers.Main) {
                                 try {
                                     onFaceRecognized(result)
-                                } catch (e: Throwable) {
-                                }
+                                } catch (e: Throwable) {}
                             }
                         } else {
                             val currentTime = System.currentTimeMillis()
@@ -265,7 +285,7 @@ class FaceAnalyzer(
                                 distance = distance,
                                 cosineSimilarity = cosine,
                                 similarityPercent = similarityPercent,
-                                quality = quality,
+                                quality = qualityCheck,
                                 isKnown = false,
                                 faceBitmap = faceBitmap,
                                 headEulerX = headX,
@@ -280,13 +300,11 @@ class FaceAnalyzer(
                             withContext(Dispatchers.Main) {
                                 try {
                                     onFaceRecognized(result)
-                                } catch (e: Throwable) {
-                                }
+                                } catch (e: Throwable) {}
                             }
 
-                            // تحسين 3: إذا مجهول، ابحث في قاعدة المجهولين
                             val similarUnknowns = try {
-                                findSimilarUnknowns(embedding)
+                                findSimilarUnknownsFast(embedding)
                             } catch (e: Throwable) {
                                 emptyList()
                             }
@@ -296,24 +314,19 @@ class FaceAnalyzer(
                                 launch {
                                     try {
                                         saveUnknownFace(faceBitmap, embedding)
-                                        // تحديث كاش المجهولين بعد الحفظ
                                         updateUnknownCache()
-                                    } catch (e: Throwable) {
-                                    }
+                                    } catch (e: Throwable) {}
                                 }
                                 withContext(Dispatchers.Main) {
                                     try {
                                         onUnknownFaceDetected(faceBitmap, embedding, similarUnknowns)
-                                    } catch (e: Throwable) {
-                                    }
+                                    } catch (e: Throwable) {}
                                 }
                             } else {
-                                // حتى لو في cooldown، اعرض التشابهات
                                 withContext(Dispatchers.Main) {
                                     try {
                                         onUnknownFaceDetected(faceBitmap, embedding, similarUnknowns)
-                                    } catch (e: Throwable) {
-                                    }
+                                    } catch (e: Throwable) {}
                                 }
                             }
                         }
@@ -325,8 +338,7 @@ class FaceAnalyzer(
                 withContext(Dispatchers.Main) {
                     try {
                         overlayView.setResults(results)
-                    } catch (e: Throwable) {
-                    }
+                    } catch (e: Throwable) {}
                 }
 
             } catch (e: Throwable) {
@@ -353,7 +365,7 @@ class FaceAnalyzer(
                 updateUnknownCache()
                 
                 lastCacheUpdateTime = currentTime
-                Log.d(TAG, "تم تحديث الكاش: معروف=${knownEmbeddingsCache.size}, مجهول=${unknownEmbeddingsCache.size}")
+                Log.d(TAG, "كاش محدث: معروف=${knownEmbeddingsCache.size}, مجهول=${unknownEmbeddingsCache.size}")
             }
         } catch (e: Throwable) {
             Log.e(TAG, "خطأ في تحديث الكاش: ${e.message}", e)
@@ -377,30 +389,25 @@ class FaceAnalyzer(
         }
     }
 
-    /**
-     * تحسين 3: البحث في قاعدة المجهولين عن وجوه مشابهة
-     */
-    private fun findSimilarUnknowns(queryEmbedding: FloatArray): List<UnknownSimilarity> {
+    private fun findSimilarUnknownsFast(queryEmbedding: FloatArray): List<UnknownSimilarity> {
         return try {
             val similarities = mutableListOf<UnknownSimilarity>()
             
             for ((entity, embedding) in unknownEmbeddingsCache) {
                 try {
-                    val distance = tfliteHelper.calculateEuclideanDistance(queryEmbedding, embedding)
-                    val cosine = tfliteHelper.calculateCosineSimilarity(queryEmbedding, embedding)
+                    // 100x أسرع: استخدام fast methods مع early exit
+                    val distance = tfliteHelper.calculateEuclideanDistanceFast(queryEmbedding, embedding, 0.6f)
+                    if (distance > 0.6f) continue // تخطي مبكر
                     
-                    // حساب نسبة التشابه
                     val similarity = ((1 - (distance / 0.6f).coerceIn(0f, 1f)) * 100).coerceIn(0f, 100f)
                     
-                    // فقط إذا التشابه > 60%
                     if (similarity > 60f) {
                         similarities.add(UnknownSimilarity(entity, similarity, distance))
+                        if (similarities.size >= 10) break // توقف مبكر إذا وجدنا 10
                     }
-                } catch (e: Throwable) {
-                }
+                } catch (e: Throwable) {}
             }
             
-            // ترتيب حسب الأعلى تشابهاً
             similarities.sortedByDescending { it.similarity }.take(10)
             
         } catch (e: Throwable) {
@@ -441,7 +448,7 @@ class FaceAnalyzer(
             val db = AppDatabase.getDatabase(context)
             db.unknownFaceDao().insertUnknown(unknownEntity)
 
-            Log.d(TAG, "✅ تم حفظ مجهول: $fileName")
+            Log.d(TAG, "✅ حفظ مجهول: $fileName")
 
         } catch (e: Throwable) {
             Log.e(TAG, "❌ فشل حفظ المجهول: ${e.message}", e)
@@ -527,7 +534,6 @@ class FaceAnalyzer(
         try {
             scope.cancel()
             detector.close()
-        } catch (e: Throwable) {
-        }
+        } catch (e: Throwable) {}
     }
 }

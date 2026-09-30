@@ -222,14 +222,20 @@ class LiveRecognitionActivity : AppCompatActivity() {
         try {
             isNightVisionEnabled = !isNightVisionEnabled
             val btn = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnNightVision)
+            
+            // تحديث FaceAnalyzer أيضاً
+            faceAnalyzer?.setNightVisionMode(isNightVisionEnabled)
+            
             if (isNightVisionEnabled) {
                 try {
-                    camera?.cameraControl?.enableTorch(true)
+                    if (!isFrontCamera) {
+                        camera?.cameraControl?.enableTorch(true)
+                    }
                     btn?.text = "ليلي ON"
-                    showWarningToast("🌙 رؤية ليلية ON - تحسين في الظلام")
+                    showWarningToast("🌙 رؤية ليلية ON - يتعرف في الظلام حتى على بعد قريب جداً")
                 } catch (e: Throwable) {
                     btn?.text = "ليلي ON"
-                    showWarningToast("🌙 رؤية ليلية برمجية")
+                    showWarningToast("🌙 رؤية ليلية برمجية نشطة - تحسين تلقائي في الظلام")
                 }
             } else {
                 try {
