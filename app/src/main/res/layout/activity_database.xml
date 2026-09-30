@@ -17,7 +17,7 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             android:background="#0B0E14"
-            app:title="قاعدة البيانات السريّة // SHADOW_DB"
+            app:title="قاعدة البيانات // SHADOW_DB v2.7"
             app:titleTextColor="#00F0FF"
             app:navigationIcon="@android:drawable/ic_menu_close_clear_cancel" />
 
@@ -27,6 +27,93 @@
             android:orientation="vertical"
             android:padding="12dp"
             android:background="#0B0E14">
+
+            <!-- إحصائيات قاعدة البيانات -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="4dp"
+                    app:cardCornerRadius="8dp"
+                    app:strokeWidth="1dp"
+                    app:strokeColor="#00FF66"
+                    app:cardBackgroundColor="#121821">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="8dp"
+                        android:gravity="center">
+
+                        <TextView
+                            android:id="@+id/tvKnownCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textColor="#00FF66"
+                            android:textSize="20sp"
+                            android:textStyle="bold"
+                            android:fontFamily="monospace" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="معروف // KNOWN"
+                            android:textColor="#78909C"
+                            android:textSize="10sp"
+                            android:fontFamily="monospace" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    app:cardCornerRadius="8dp"
+                    app:strokeWidth="1dp"
+                    app:strokeColor="#FF0055"
+                    app:cardBackgroundColor="#121821">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="8dp"
+                        android:gravity="center">
+
+                        <TextView
+                            android:id="@+id/tvUnknownCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textColor="#FF0055"
+                            android:textSize="20sp"
+                            android:textStyle="bold"
+                            android:fontFamily="monospace" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="مجهول // UNKNOWN"
+                            android:textColor="#78909C"
+                            android:textSize="10sp"
+                            android:fontFamily="monospace" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+            </LinearLayout>
 
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
@@ -51,6 +138,17 @@
                     android:inputType="text" />
 
             </com.google.android.material.textfield.TextInputLayout>
+
+            <TextView
+                android:id="@+id/tvDatabasePath"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="قاعدة البيانات: shadowlook_database - محمية من الحذف ✅"
+                android:textColor="#607D8B"
+                android:textSize="9sp"
+                android:fontFamily="monospace"
+                android:gravity="center" />
 
         </LinearLayout>
 

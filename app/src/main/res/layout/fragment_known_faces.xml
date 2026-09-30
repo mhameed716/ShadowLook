@@ -17,22 +17,63 @@
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:gravity="center"
-        android:visibility="gone">
+        android:visibility="gone"
+        android:padding="24dp">
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="120dp"
+            android:layout_height="120dp"
+            app:cardCornerRadius="60dp"
+            app:strokeWidth="2dp"
+            app:strokeColor="#00FF66"
+            app:cardBackgroundColor="#121821"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:text="👤"
+                android:textSize="50sp"
+                android:gravity="center" />
+
+        </com.google.android.material.card.MaterialCardView>
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="لا يوجد أشخاص مسجلون"
+            android:text="قاعدة البيانات موجودة ✅"
+            android:textColor="#00FF66"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="لا يوجد أشخاص مسجلون حالياً"
             android:textColor="#607D8B"
-            android:textSize="16sp" />
+            android:textSize="14sp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="قم بتسجيل وجوه جديدة من شاشة التسجيل"
+            android:text="قم بتسجيل وجوه جديدة من شاشة التسجيل\nسيتم حفظها مع تاريخ تلقائي\nقاعدة البيانات محمية من الحذف"
             android:textColor="#37474F"
-            android:textSize="12sp" />
+            android:textSize="11sp"
+            android:gravity="center"
+            android:lineSpacingExtra="2dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="DATABASE: shadowlook_database\nTABLE: known_users - EXISTS ✅\nPROTECTED FROM DELETION"
+            android:textColor="#1A3A2A"
+            android:textSize="9sp"
+            android:fontFamily="monospace"
+            android:gravity="center" />
 
     </LinearLayout>
 
