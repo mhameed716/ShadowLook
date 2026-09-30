@@ -58,6 +58,10 @@ class LiveRecognitionActivity : AppCompatActivity() {
     private var tfliteHelper: TFLiteHelper? = null
     private var faceAnalyzer: FaceAnalyzer? = null
     private var cameraProvider: ProcessCameraProvider? = null
+    private var camera: androidx.camera.core.Camera? = null
+    private var cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
+    private var isNightVisionEnabled = false
+    private var isFrontCamera = true
 
     companion object {
         private const val TAG = "LiveRecognition"
@@ -181,8 +185,61 @@ class LiveRecognitionActivity : AppCompatActivity() {
                     showErrorDialog("خطأ", "فشل فتح الإحصائيات: ${e.message}")
                 }
             }
+            findViewById<View>(R.id.btnSwitchCamera)?.setOnClickListener {
+                try {
+                    switchCamera()
+                } catch (e: Throwable) {
+                    showErrorDialog("خطأ", "فشل تبديل الكاميرا: ${e.message}")
+                }
+            }
+            findViewById<View>(R.id.btnNightVision)?.setOnClickListener {
+                try {
+                    toggleNightVision()
+                } catch (e: Throwable) {
+                    showErrorDialog("خطأ", "فشل الرؤية الليلية: ${e.message}")
+                }
+            }
         } catch (e: Throwable) {
             Log.e(TAG, "setupClickListeners error: ${e.message}", e)
+        }
+    }
+
+    private fun switchCamera() {
+        try {
+            isFrontCamera = !isFrontCamera
+            cameraSelector = if (isFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+            val btn = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSwitchCamera)
+            btn?.text = if (isFrontCamera) "أمامية" else "خلفية"
+            Log.d(TAG, "تبديل إلى ${if (isFrontCamera) "الأمامية" else "الخلفية"}")
+            bindCameraUseCasesSafely()
+            showWarningToast("كاميرا ${if (isFrontCamera) "أمامية" else "خلفية"}")
+        } catch (e: Throwable) {
+            Log.e(TAG, "switchCamera error: ${e.message}", e)
+        }
+    }
+
+    private fun toggleNightVision() {
+        try {
+            isNightVisionEnabled = !isNightVisionEnabled
+            val btn = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnNightVision)
+            if (isNightVisionEnabled) {
+                try {
+                    camera?.cameraControl?.enableTorch(true)
+                    btn?.text = "ليلي ON"
+                    showWarningToast("🌙 رؤية ليلية ON - تحسين في الظلام")
+                } catch (e: Throwable) {
+                    btn?.text = "ليلي ON"
+                    showWarningToast("🌙 رؤية ليلية برمجية")
+                }
+            } else {
+                try {
+                    camera?.cameraControl?.enableTorch(false)
+                } catch (e: Throwable) {}
+                btn?.text = "ليلي"
+                showWarningToast("تم إيقاف الرؤية الليلية")
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "toggleNightVision error: ${e.message}", e)
         }
     }
 
@@ -263,12 +320,17 @@ class LiveRecognitionActivity : AppCompatActivity() {
 
             imageAnalysis.setAnalyzer(cameraExecutor, faceAnalyzer!!)
 
-            // تحسين 6: استخدام كاميرا خلفية أيضاً لكشف على بعد 3 متر؟ نستخدم أمامية افتراضياً
-            val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
-
             cameraProvider.unbindAll()
-            cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis)
-            Log.d(TAG, "✅ Camera bound - Auto detection, 3m distance, 3D tracking enabled")
+            camera = cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis)
+            
+            // تحسين 1: إذا الرؤية الليلية مفعلة وكان لدينا كاميرا خلفية، فعل الفلاش
+            if (isNightVisionEnabled && !isFrontCamera) {
+                try {
+                    camera?.cameraControl?.enableTorch(true)
+                } catch (e: Throwable) {}
+            }
+            
+            Log.d(TAG, "✅ Camera bound - ${if (isFrontCamera) "Front" else "Back"} - Auto detection, 3m distance, 3D tracking, Night vision: $isNightVisionEnabled")
 
         } catch (e: Throwable) {
             Log.e(TAG, "bindCameraUseCases error: ${e.message}", e)

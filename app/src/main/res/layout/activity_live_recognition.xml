@@ -47,11 +47,37 @@
             android:gravity="center_vertical" />
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSwitchCamera"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="كاميرا"
+            android:textSize="9sp"
+            app:icon="@android:drawable/ic_menu_camera"
+            app:iconSize="14dp"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            app:strokeColor="#FFFFFF"
+            android:textColor="#FFFFFF" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnNightVision"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginStart="4dp"
+            android:text="ليلي"
+            android:textSize="9sp"
+            app:icon="@android:drawable/ic_menu_view"
+            app:iconSize="14dp"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            app:strokeColor="#FFD600"
+            android:textColor="#FFD600" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnOpenDashboard"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
+            android:layout_marginStart="4dp"
             android:text="إحصائيات"
-            android:textSize="10sp"
+            android:textSize="9sp"
             app:icon="@android:drawable/ic_menu_sort_by_size"
             app:iconSize="14dp"
             style="@style/Widget.Material3.Button.OutlinedButton"
@@ -62,9 +88,9 @@
             android:id="@+id/btnOpenRegister"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:layout_marginStart="6dp"
+            android:layout_marginStart="4dp"
             android:text="تسجيل"
-            android:textSize="10sp"
+            android:textSize="9sp"
             app:icon="@android:drawable/ic_menu_add"
             app:iconSize="14dp"
             style="@style/Widget.Material3.Button.OutlinedButton"
@@ -75,9 +101,9 @@
             android:id="@+id/btnOpenDatabase"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:layout_marginStart="6dp"
+            android:layout_marginStart="4dp"
             android:text="القاعدة"
-            android:textSize="10sp"
+            android:textSize="9sp"
             app:icon="@android:drawable/ic_menu_gallery"
             app:iconSize="14dp"
             style="@style/Widget.Material3.Button.OutlinedButton"

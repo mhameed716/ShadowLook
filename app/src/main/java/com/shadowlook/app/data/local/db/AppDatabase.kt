@@ -13,7 +13,7 @@ import com.shadowlook.app.data.local.entity.UserFaceEntity
 
 @Database(
     entities = [UserFaceEntity::class, UnknownFaceEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
