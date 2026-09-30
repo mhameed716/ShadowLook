@@ -1,3 +1,4 @@
+import android.view.View
 package com.shadowlook.app.ui.activity
 
 import android.os.Bundle
